@@ -67,11 +67,13 @@ export async function loginAction(
       default:
         return { success: true, url: '/dashboard' }
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[Login] Error:', error)
+    const message =
+      error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
     return {
       success: false,
-      error: 'An unexpected error occurred. Please try again.',
+      error: message,
     }
   }
 }
