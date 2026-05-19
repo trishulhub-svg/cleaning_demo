@@ -37,6 +37,9 @@ model User {
   phoneVerified        Boolean   @default(false)
   passwordResetToken   String?
   passwordResetExpires DateTime?
+  otpCode              String?
+  otpExpiresAt         DateTime?
+  otpType              String?   // email, phone, both
   createdAt            DateTime  @default(now())
   updatedAt            DateTime?
 
@@ -71,6 +74,7 @@ model Staff {
   bookings            Booking[]            @relation("StaffAssignment")
   bookingAssignments  BookingAssignment[]
   staffPasswordResets StaffPasswordReset[]
+  staffSessions       StaffSession[]
 
   @@index([email])
   @@index([role])
@@ -107,6 +111,7 @@ model Service {
 model Booking {
   id                 Int       @id @default(autoincrement())
   userId             Int? // nullable — guests have no user account
+  assignedStaffId    Int?
   guestName          String?
   guestEmail         String?
   guestPhone         String?
@@ -116,30 +121,31 @@ model Booking {
   address            String
   accessNotes        String?
   totalPrice         Float     @default(0)
-  paymentStatus      String    @default("cash_on_service") // paid, pending, cash_on_service
-  paymentMethod      String?
-  bookingStatus      String    @default("pending") // pending, confirmed, completed, cancelled, cash_pending
-  assignedStaffId    Int?
-  qrCompletionCode   String?
-  qrScannedAt        DateTime?
-  cancelledAt        DateTime?
-  cancellationReason String?
-  cancellationType   String? // customer, admin
-  refundStatus       String    @default("none") // none, requested, auto_refund, rejected, completed
-  invoiceId          Int?      @unique // one-to-one with Invoice (back-reference side)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime?
+  paymentStatus      String    @default("pending") // pending, paid, cash_on_service
+  invoiceId          Int?      // FK to Invoice (one-to-one: one booking has one invoice)
+  bookingStatus      String    @default("pending") // pending, confirmed, in_progress, completed, cancelled, cash_pending
+  qrCompletionCode   String?
+  qrScannedAt        DateTime?
+  completedBy        String?   // name of person who completed the service
+  completedAt        DateTime? // when the service was completed
+  cancelledAt        DateTime?
+  cancellationReason String?
+  cancellationType   String?   // none, customer, admin, system
+  refundStatus       String    @default("none") // none, requested, approved, processing, completed, rejected, auto_refund
+  paymentMethod      String?   // payment method used for this booking
 
   user             User?              @relation(fields: [userId], references: [id])
   service          Service            @relation(fields: [serviceId], references: [id])
   assignedStaff    Staff?             @relation("StaffAssignment", fields: [assignedStaffId], references: [id])
-  invoice          Invoice?           @relation
   assignment       BookingAssignment?
   payments         Payment[]
   refunds          Refund[]
   cancellationLogs CancellationLog[]
   reviews          Review[]
 
+  @@unique([qrCompletionCode])
   @@index([userId])
   @@index([serviceId])
   @@index([assignedStaffId])
@@ -153,40 +159,52 @@ model Booking {
 model Invoice {
   id            Int       @id @default(autoincrement())
   userId        Int       @default(0) // NOT a FK — guests use userId=0
-  bookingId     Int       @unique // one-to-one with Booking
+  bookingId     Int       @default(0) // plain int — MySQL allows multiple invoices per booking, no FK
   invoiceNumber String    @unique
   totalAmount   Float     @default(0)
-  paymentMethod String    @default("stripe")
-  paymentStatus String    @default("pending") // pending, paid, refunded
-  paymentIntent String?
+  paymentMethod String    @default("stripe") // stripe, cash_on_service, bank_transfer
+  paymentStatus String    @default("pending") // pending, paid, failed, refunded
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime?
+  paidAt        DateTime?
 
-  // NOTE: No relation to User — userId is a plain int, not a real FK.
-  // FK owner side for the one-to-one Booking↔Invoice relation.
-  booking  Booking   @relation(fields: [bookingId], references: [id])
+  // NOTE: No relation to User or Booking — both userId and bookingId are plain ints.
+  // The Booking model has invoiceId for one-to-one lookup from Booking side.
   payments Payment[]
   refunds  Refund[]
+  invoiceItems InvoiceItem[]
 
   @@index([bookingId])
   @@index([paymentStatus])
+}
+
+// ============ INVOICE ITEMS (from MySQL) ============
+model InvoiceItem {
+  id          Int       @id @default(autoincrement())
+  invoiceId   Int
+  bookingId   Int
+  serviceName String
+  amount      Float
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@index([bookingId])
 }
 
 // ============ PAYMENTS ============
 model Payment {
   id            Int       @id @default(autoincrement())
   userId        Int       @default(0) // NOT a FK — guests use userId=0
-  bookingId     Int
-  invoiceId     Int
+  bookingId     Int?
   amount        Float     @default(0)
-  paymentMethod String    @default("stripe")
+  paymentMethod String?   // stripe, cash_on_service, etc.
   transactionId String?
-  paymentStatus String    @default("pending") // pending, completed, failed
-  paidAt        DateTime?
-  createdAt     DateTime  @default(now())
+  paymentStatus String    @default("pending") // pending, completed, failed, refunded
+  paidAt        DateTime  @default(now())
+  invoiceId     Int
 
   // NOTE: No relation to User — userId is a plain int, not a real FK.
-  booking Booking @relation(fields: [bookingId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
   invoice Invoice @relation(fields: [invoiceId], references: [id])
 
   @@index([bookingId])
@@ -197,21 +215,21 @@ model Payment {
 // ============ REFUNDS ============
 model Refund {
   id             Int       @id @default(autoincrement())
-  userId         Int // NOT a FK — guests use userId=0
-  bookingId      Int
-  invoiceId      Int?
+  userId         Int       @default(0) // NOT a FK — guests use userId=0
+  bookingId      Int?      // nullable in MySQL
+  invoiceId      Int
   amount         Float     @default(0)
-  refundType     String    @default("partial") // full, partial
+  refundType     String    @default("full") // full, partial
+  reason         String    // required in MySQL
   status         String    @default("pending") // pending, approved, processing, completed, rejected
-  reason         String?
-  adminNotes     String?
   stripeRefundId String?
+  adminNotes     String?
   requestedAt    DateTime  @default(now())
   processedAt    DateTime?
 
   // NOTE: No relation to User — userId is a plain int, not a real FK.
-  booking Booking  @relation(fields: [bookingId], references: [id])
-  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
 
   @@index([bookingId])
   @@index([invoiceId])
@@ -223,7 +241,7 @@ model BookingAssignment {
   id          Int       @id @default(autoincrement())
   bookingId   Int       @unique // one-to-one with Booking
   staffId     Int
-  assignedBy  Int?
+  assignedBy  Int
   status      String    @default("assigned") // assigned, in_progress, completed, cancelled, cash_pending
   qrCode      String?
   notes       String?
@@ -261,8 +279,8 @@ model OtpLog {
   email      String
   phone      String?
   otpCode    String
-  otpType    String    @default("email")
-  purpose    String
+  otpType    String    @default("email") // email, phone, both
+  purpose    String    // registration, password_reset, booking
   userId     Int?
   ipAddress  String?
   sentAt     DateTime  @default(now())
@@ -280,25 +298,52 @@ model OtpLog {
 // ============ ACTIVITY LOGS ============
 model ActivityLog {
   id         Int      @id @default(autoincrement())
-  actorType  String? // super_admin, admin, staff, customer, system
-  actorId    Int?
-  actorName  String?
+  actorType  String   // super_admin, admin, staff, customer, system
+  actorId    Int
+  actorName  String
   actorEmail String?
   action     String
-  category   String
+  category   String   // auth, admin_management, staff_management, booking, payment, system, security
   severity   String   @default("medium") // low, medium, high, critical
-  targetType String?
+  targetType String?  // user, booking, payment, invoice, booking_assignment, staff, service, other
   targetId   Int?
   targetName String?
-  details    String? // JSON string
+  details    String?  // JSON string
   ipAddress  String?
   userAgent  String?
   requestUri String?
   sessionId  String?
   createdAt  DateTime @default(now())
+  isArchived Boolean  @default(false)
 
   @@index([actorType, actorId])
   @@index([action])
+  @@index([category])
+  @@index([createdAt])
+}
+
+// ============ ACTIVITY LOGS ARCHIVE (from MySQL) ============
+model ActivityLogArchive {
+  id         Int      @id @default(autoincrement())
+  actorType  String
+  actorId    Int
+  actorName  String
+  actorEmail String?
+  action     String
+  category   String
+  severity   String   @default("medium")
+  targetType String?
+  targetId   Int?
+  targetName String?
+  details    String?  // JSON string
+  ipAddress  String?
+  userAgent  String?
+  requestUri String?
+  sessionId  String?
+  createdAt  DateTime @default(now())
+  isArchived Boolean  @default(false)
+
+  @@index([actorType, actorId])
   @@index([category])
   @@index([createdAt])
 }
@@ -307,8 +352,8 @@ model ActivityLog {
 model CancellationLog {
   id              Int      @id @default(autoincrement())
   bookingId       Int
-  userId          Int?
-  cancelledBy     String
+  userId          Int
+  cancelledBy     String   // customer, admin
   reason          String
   refundAmount    Float    @default(0)
   refundProcessed Boolean  @default(false)
@@ -347,7 +392,7 @@ model AlertSubscription {
   id         Int      @id @default(autoincrement())
   adminId    Int
   eventType  String
-  emailAlert Boolean  @default(false)
+  emailAlert Boolean  @default(true)
   createdAt  DateTime @default(now())
 
   admin Admin @relation(fields: [adminId], references: [id])
@@ -362,12 +407,29 @@ model StaffPasswordReset {
   staffId          Int
   token            String    @unique
   tempPasswordHash String?
-  expiredAt        DateTime
+  emailSentAt      DateTime  @default(now())
   usedAt           DateTime?
+  expiredAt        DateTime
   ipAddress        String?
   createdAt        DateTime  @default(now())
 
   staff Staff @relation(fields: [staffId], references: [id])
 
   @@index([staffId])
+}
+
+// ============ STAFF SESSIONS (from MySQL) ============
+model StaffSession {
+  id           Int      @id @default(autoincrement())
+  staffId      Int
+  sessionToken String
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@index([staffId])
+  @@index([sessionToken])
 }

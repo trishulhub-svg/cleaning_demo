@@ -1,7 +1,7 @@
 'use server'
 
-import { signIn } from 'next-auth'
-import { USER_TYPES } from '@/lib/constants'
+import { signIn, getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export interface LoginActionResult {
   success: boolean
@@ -28,12 +28,6 @@ export async function loginAction(
     })
 
     if (result?.error) {
-      // NextAuth passes the error from authorize() through
-      const errorMessages: Record<string, string> = {
-        CredentialsSignin: 'Invalid email or password.',
-        default: 'Invalid email or password.',
-      }
-
       // Pass through specific error messages from the authorize function
       if (
         result.error.includes('deactivated') ||
@@ -42,22 +36,37 @@ export async function loginAction(
         return { success: false, error: result.error }
       }
 
+      const errorMessages: Record<string, string> = {
+        CredentialsSignin: 'Invalid email or password.',
+        default: 'Invalid email or password.',
+      }
+
       return {
         success: false,
         error: errorMessages[result.error] || 'Invalid email or password.',
       }
     }
 
-    // After successful sign in, we need to determine where to redirect.
-    // Since we used redirect: false, we need to fetch the session to get userType.
-    // However, we can use the callbackUrl or redirect based on the original intent.
-    // For now, redirect to dashboard by default — the session middleware will handle role-based routing.
+    // After successful sign in, fetch the session to determine userType
+    // and redirect to the appropriate dashboard
+    const session = await getServerSession(authOptions)
     const callbackUrl = formData.get('callbackUrl') as string
+
     if (callbackUrl) {
       return { success: true, url: callbackUrl }
     }
 
-    return { success: true, url: '/dashboard' }
+    // Route based on user type
+    const userType = session?.user?.userType
+    switch (userType) {
+      case 'admin':
+        return { success: true, url: '/admin' }
+      case 'staff':
+        return { success: true, url: '/staff' }
+      case 'customer':
+      default:
+        return { success: true, url: '/dashboard' }
+    }
   } catch (error) {
     console.error('[Login] Error:', error)
     return {
