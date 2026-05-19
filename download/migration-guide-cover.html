@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=794px, height=1123px, initial-scale=1.0">
+<title>PHP to Vercel Migration Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #766944;
+    --accent: #2298bf;
+    --text: #1c1b19;
+    --muted: #797770;
+    --border: #cfcabe;
+    --bg: #f6f6f5;
+  }
+  @page { size: 794px 1123px; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 794px;
+    height: 1123px;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    overflow: visible;
+  }
+
+  /* Layer 0 - Base */
+  .cover-base {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: #ffffff;
+  }
+
+  /* Layer 1 - Background grid */
+  .cover-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .grid-pattern {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(118,105,68,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(118,105,68,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* Layer 2 - Structure */
+  .cover-structure {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  .anchor-line {
+    position: absolute;
+    left: 95px;
+    top: 112px;
+    bottom: 112px;
+    width: 5px;
+    background: var(--primary);
+    border-radius: 3px;
+  }
+  .meta-line {
+    position: absolute;
+    left: 125px;
+    top: 780px;
+    width: 320px;
+    height: 1px;
+    background: var(--primary);
+    opacity: 0.35;
+  }
+
+  /* Layer 3 - Content */
+  .cover-content {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+  }
+  .kicker {
+    position: absolute;
+    left: 125px;
+    top: 155px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 4px;
+    color: var(--muted);
+    opacity: 0.7;
+    text-transform: uppercase;
+  }
+  .hero-title {
+    position: absolute;
+    left: 125px;
+    top: 300px;
+    width: 540px;
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1.12;
+    color: var(--text);
+    letter-spacing: -1px;
+  }
+  .hero-title .accent { color: var(--accent); }
+  .summary {
+    position: absolute;
+    left: 125px;
+    top: 520px;
+    width: 520px;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+  .meta-block {
+    position: absolute;
+    left: 125px;
+    top: 795px;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .meta-block strong { color: var(--text); font-weight: 600; }
+  .footer-badge {
+    position: absolute;
+    right: 60px;
+    bottom: 48px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--border);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <div class="cover-base"></div>
+  <div class="cover-bg">
+    <div class="grid-pattern"></div>
+  </div>
+  <div class="cover-structure">
+    <div class="anchor-line"></div>
+    <div class="meta-line"></div>
+  </div>
+  <div class="cover-content">
+    <div class="kicker">Production-Ready Deployment Guide</div>
+    <div class="hero-title">
+      PHP/MySQL to<br>
+      <span class="accent">Vercel + Turso</span><br>
+      Migration Guide
+    </div>
+    <div class="summary">
+      A comprehensive 10-stage walkthrough for migrating a local XAMPP PHP/MySQL project
+      to GitHub and deploying on Vercel with Turso (LibSQL) as the database layer.
+      Covers audit, Git setup, database migration, code refactoring, Vercel configuration,
+      security hardening, and post-deployment verification.
+    </div>
+    <div class="meta-block">
+      <strong>Stack:</strong> PHP 8.2 / MySQL / GitHub / Vercel / Turso (LibSQL)<br>
+      <strong>Version:</strong> 1.0 &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Date:</strong> May 2026
+    </div>
+    <div class="footer-badge">v1.0 &mdash; Migration Handbook</div>
+  </div>
+</body>
+</html>
