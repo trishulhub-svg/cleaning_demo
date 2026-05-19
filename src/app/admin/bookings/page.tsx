@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import {
   Search,
   Filter,
@@ -8,7 +8,14 @@ import {
   UserPlus,
   ChevronLeft,
   ChevronRight,
+  QrCode,
+  Copy,
+  Check,
+  Phone,
+  Shield,
+  AlertCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,7 +46,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { CURRENCY } from "@/lib/constants";
+
+// ============ Types ============
 
 interface Booking {
   id: number;
@@ -58,7 +68,7 @@ interface Booking {
   assignedStaff: { id: number; name: string; phone: string } | null;
   guestName: string | null;
   guestEmail: string | null;
-  assignment: { id: number; status: string } | null;
+  assignment: { id: number; status: string; qrCode?: string | null } | null;
 }
 
 interface StaffMember {
@@ -75,10 +85,11 @@ const PAYMENT_STATUSES = ["paid", "pending", "cash_on_service"];
 function getStatusBadge(status: string) {
   const map: Record<string, { className: string }> = {
     pending: { className: "bg-amber-100 text-amber-800 border-amber-200" },
-    confirmed: { className: "bg-blue-100 text-blue-800 border-blue-200" },
-    completed: { className: "bg-green-100 text-green-800 border-green-200" },
+    confirmed: { className: "bg-green-100 text-green-800 border-green-200" },
+    completed: { className: "bg-emerald-100 text-emerald-800 border-emerald-200" },
     cancelled: { className: "bg-red-100 text-red-800 border-red-200" },
     cash_pending: { className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+    in_progress: { className: "bg-blue-100 text-blue-800 border-blue-200" },
   };
   const config = map[status] || { className: "bg-gray-100 text-gray-800" };
   return (
@@ -102,7 +113,124 @@ function getPaymentBadge(status: string) {
   );
 }
 
-export default function BookingsPage() {
+// ============ QR Code Result Dialog ============
+
+function QrResultDialog({
+  open,
+  onClose,
+  bookingId,
+  staffName,
+  qrCode,
+}: {
+  open: boolean;
+  onClose: () => void;
+  bookingId: number;
+  staffName: string;
+  qrCode: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyQrCode = async () => {
+    try {
+      await navigator.clipboard.writeText(qrCode);
+      setCopied(true);
+      toast.success("QR code copied to clipboard!");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy QR code.");
+    }
+  };
+
+  const qrScanUrl = `/public/scan-qr?code=${encodeURIComponent(qrCode)}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <QrCode className="h-5 w-5 text-green-600" />
+            Staff Assigned Successfully
+          </DialogTitle>
+          <DialogDescription>
+            Booking #{bookingId} has been assigned to {staffName} with a QR completion code.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* QR Code Display */}
+          <div className="rounded-xl bg-green-50 border border-green-200 p-5 text-center space-y-3">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <QrCode className="h-8 w-8 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-green-600 font-medium uppercase tracking-wider mb-1">
+                QR Completion Code
+              </p>
+              <p className="text-lg font-mono font-bold text-green-800 break-all">
+                {qrCode}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={copyQrCode}
+              className="gap-1.5 text-green-700 border-green-300 hover:bg-green-100"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy Code
+                </>
+              )}
+            </Button>
+          </div>
+
+          <Separator />
+
+          {/* Info */}
+          <div className="rounded-lg bg-gray-50 p-3 space-y-2 text-sm">
+            <div className="flex items-start gap-2">
+              <Shield className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+              <p className="text-gray-600">
+                The staff member has been notified by email with the QR code and booking details.
+              </p>
+            </div>
+            <div className="flex items-start gap-2">
+              <Phone className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+              <p className="text-gray-600">
+                Customers scan this code on-site to verify and complete the service.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={copyQrCode}
+            className="gap-1.5"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied ? "Copied!" : "Copy QR Code"}
+          </Button>
+          <Button onClick={onClose} className="bg-green-600 hover:bg-green-700">
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============ Main Component ============
+
+function BookingsPageInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
@@ -117,16 +245,26 @@ export default function BookingsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  // Modals
+  // Assign Modal
   const [assignModal, setAssignModal] = useState<{
     open: boolean;
     bookingId: number;
     isReassign: boolean;
+    assignmentId?: number;
     currentStaff?: string;
   }>({ open: false, bookingId: 0, isReassign: false });
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [assignNotes, setAssignNotes] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  // QR Result Dialog
+  const [qrResult, setQrResult] = useState<{
+    open: boolean;
+    bookingId: number;
+    staffName: string;
+    qrCode: string;
+  } | null>(null);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -216,27 +354,76 @@ export default function BookingsPage() {
     }
   };
 
+  // ── Assign staff with QR code generation ──
   const handleAssign = async () => {
     if (!selectedStaffId) return;
     setActionLoading(true);
+    setActionError("");
+
     try {
-      const { bookingId, isReassign } = assignModal;
-      await fetch("/api/admin/bookings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { bookingId, isReassign, assignmentId } = assignModal;
+
+      let endpoint: string;
+      let body: Record<string, unknown>;
+
+      if (isReassign && assignmentId) {
+        // Use dedicated reassign endpoint
+        endpoint = "/api/admin/bookings/reassign";
+        body = {
+          assignmentId,
+          newStaffId: parseInt(selectedStaffId),
+          adminNotes: assignNotes || undefined,
+        };
+      } else {
+        // Use dedicated assign endpoint (generates QR code)
+        endpoint = "/api/admin/bookings/assign";
+        body = {
           bookingId,
-          action: isReassign ? "reassign" : "assign",
           staffId: parseInt(selectedStaffId),
-          notes: assignNotes,
-        }),
+          notes: assignNotes || undefined,
+        };
+      }
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setActionError(data.error || "Failed to assign staff. Please try again.");
+        return;
+      }
+
+      // Close assign modal
       setAssignModal({ open: false, bookingId: 0, isReassign: false });
       setSelectedStaffId("");
       setAssignNotes("");
+      setActionError("");
+
+      // Show QR code result
+      if (data.assignment?.qrCode) {
+        setQrResult({
+          open: true,
+          bookingId: data.bookingId || bookingId,
+          staffName: data.staffName || "Staff",
+          qrCode: data.assignment.qrCode,
+        });
+      }
+
+      toast.success(
+        isReassign
+          ? "Staff reassigned successfully!"
+          : "Staff assigned with QR code generated!"
+      );
+
+      // Refresh bookings list
       fetchBookings();
     } catch (err) {
       console.error("Failed to assign staff", err);
+      setActionError("Network error. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -256,6 +443,7 @@ export default function BookingsPage() {
         "Status",
         "Payment",
         "Staff",
+        "QR Code",
       ].join(","),
       ...bookings.map((b) =>
         [
@@ -270,6 +458,7 @@ export default function BookingsPage() {
           b.bookingStatus,
           b.paymentStatus,
           `"${b.assignedStaff?.name || "Unassigned"}"`,
+          `"${b.assignment?.qrCode || ""}"`,
         ].join(",")
       ),
     ];
@@ -286,6 +475,11 @@ export default function BookingsPage() {
     b.user?.name || b.guestName || "Guest";
   const getCustomerEmail = (b: Booking) =>
     b.user?.email || b.guestEmail || "-";
+
+  // Get selected staff details for the modal
+  const selectedStaff = staff.find(
+    (s) => s.id.toString() === selectedStaffId
+  );
 
   return (
     <div className="space-y-6">
@@ -480,15 +674,38 @@ export default function BookingsPage() {
                         </Select>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {booking.assignedStaff ? (
-                          <span className="text-sm">
-                            {booking.assignedStaff.name}
-                          </span>
-                        ) : (
-                          <Badge variant="outline" className="text-xs text-gray-400">
-                            Unassigned
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {booking.assignedStaff ? (
+                            <>
+                              <span className="text-sm">
+                                {booking.assignedStaff.name}
+                              </span>
+                              {booking.assignment?.qrCode && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 text-green-700 bg-green-50 border-green-200 cursor-pointer"
+                                  title={`QR: ${booking.assignment.qrCode}`}
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(
+                                      booking.assignment!.qrCode!
+                                    );
+                                    toast.success("QR code copied!");
+                                  }}
+                                >
+                                  <QrCode className="h-2.5 w-2.5 mr-0.5" />
+                                  QR
+                                </Badge>
+                              )}
+                            </>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-xs text-gray-400"
+                            >
+                              Unassigned
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -501,6 +718,7 @@ export default function BookingsPage() {
                                   open: true,
                                   bookingId: booking.id,
                                   isReassign: true,
+                                  assignmentId: booking.assignment?.id,
                                   currentStaff: booking.assignedStaff.name,
                                 })
                               }
@@ -566,22 +784,37 @@ export default function BookingsPage() {
       {/* Assign / Reassign Modal */}
       <Dialog
         open={assignModal.open}
-        onOpenChange={(open) =>
-          setAssignModal((prev) => ({ ...prev, open }))
-        }
+        onOpenChange={(open) => {
+          setAssignModal((prev) => ({ ...prev, open }));
+          if (!open) {
+            setActionError("");
+          }
+        }}
       >
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {assignModal.isReassign ? "Reassign Staff" : "Assign Staff"}
+            <DialogTitle className="flex items-center gap-2">
+              {assignModal.isReassign ? (
+                <>
+                  <UserPlus className="h-5 w-5 text-amber-600" />
+                  Reassign Staff
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-5 w-5 text-green-600" />
+                  Assign Staff
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
               {assignModal.isReassign
                 ? `Currently assigned to ${assignModal.currentStaff}. Select a new staff member.`
-                : "Select a staff member to assign this booking."}
+                : "Select a staff member to assign this booking. A QR completion code will be generated automatically."}
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-2">
+            {/* Staff Selector */}
             <div className="space-y-2">
               <Label>Staff Member</Label>
               <Select
@@ -589,49 +822,145 @@ export default function BookingsPage() {
                 onValueChange={setSelectedStaffId}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select staff..." />
+                  <SelectValue placeholder="Select a staff member..." />
                 </SelectTrigger>
                 <SelectContent>
                   {staff.map((s) => (
                     <SelectItem key={s.id} value={s.id.toString()}>
-                      {s.name} ({s.role})
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{s.name}</span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0 bg-gray-100 text-gray-600"
+                        >
+                          {s.role}
+                        </Badge>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Selected Staff Details */}
+            {selectedStaff && (
+              <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-semibold text-green-700">
+                    {selectedStaff.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {selectedStaff.name}
+                    </p>
+                    <p className="text-xs text-gray-500 capitalize">
+                      {selectedStaff.role}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-1.5 text-gray-600">
+                    <Phone className="h-3 w-3 text-gray-400" />
+                    <span>{selectedStaff.phone}</span>
+                  </div>
+                  <div className="text-gray-500 truncate">
+                    {selectedStaff.email}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
             <div className="space-y-2">
               <Label>Notes (optional)</Label>
               <Textarea
                 value={assignNotes}
                 onChange={(e) => setAssignNotes(e.target.value)}
-                placeholder="Any notes for the staff member..."
+                placeholder={
+                  assignModal.isReassign
+                    ? "Reason for reassignment..."
+                    : "Any notes for the staff member..."
+                }
                 rows={3}
               />
             </div>
+
+            {/* Info about QR code for new assignments */}
+            {!assignModal.isReassign && (
+              <div className="rounded-lg bg-green-50 border border-green-200 p-3 flex items-start gap-2">
+                <QrCode className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-green-700">
+                  A unique QR completion code will be generated and sent to the staff
+                  member&apos;s email. The customer can scan this code on-site to complete
+                  the service.
+                </p>
+              </div>
+            )}
+
+            {/* Error display */}
+            {actionError && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-red-700">{actionError}</p>
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() =>
-                setAssignModal({ open: false, bookingId: 0, isReassign: false })
-              }
+              onClick={() => {
+                setAssignModal({
+                  open: false,
+                  bookingId: 0,
+                  isReassign: false,
+                });
+                setSelectedStaffId("");
+                setAssignNotes("");
+                setActionError("");
+              }}
             >
               Cancel
             </Button>
             <Button
               onClick={handleAssign}
               disabled={!selectedStaffId || actionLoading}
+              className={
+                assignModal.isReassign
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-green-600 hover:bg-green-700"
+              }
             >
-              {actionLoading
-                ? "Saving..."
-                : assignModal.isReassign
-                  ? "Reassign"
-                  : "Assign"}
+              {actionLoading ? (
+                "Saving..."
+              ) : assignModal.isReassign ? (
+                "Reassign Staff"
+              ) : (
+                "Assign & Generate QR"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* QR Code Result Dialog */}
+      {qrResult && (
+        <QrResultDialog
+          open={qrResult.open}
+          onClose={() => setQrResult(null)}
+          bookingId={qrResult.bookingId}
+          staffName={qrResult.staffName}
+          qrCode={qrResult.qrCode}
+        />
+      )}
     </div>
+  );
+}
+
+export default function BookingsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+      <BookingsPageInner />
+    </Suspense>
   );
 }

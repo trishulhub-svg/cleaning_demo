@@ -4,6 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-helpers'
 import { hashPassword, verifyPassword } from '@/lib/auth-helpers'
+import { sendCancellationEmail, sendRescheduleEmail } from '@/lib/email'
+import { logBookingActivity, logPaymentActivity } from '@/lib/activity-logger'
+import { format } from 'date-fns'
 import type { UserType } from '@/lib/constants'
 
 // ============ Types ============
@@ -135,7 +138,7 @@ export async function changePassword(
   }
 }
 
-// ============ Cancel Booking ============
+// ============ Cancel Booking (Enhanced) ============
 
 export async function cancelBooking(
   data: CancelBookingData
@@ -148,11 +151,13 @@ export async function cancelBooking(
       return { success: false, message: 'Please provide a reason for cancellation.' }
     }
 
-    // Fetch the booking
+    // Fetch the booking with service and assignment info
     const booking = await db.booking.findUnique({
       where: { id: bookingId },
       include: {
         service: { select: { name: true } },
+        assignment: { select: { id: true, status: true } },
+        user: { select: { name: true, email: true } },
       },
     })
 
@@ -172,51 +177,127 @@ export async function cancelBooking(
     const refundPercent = getRefundPercentage(booking.bookingDate, booking.bookingTime)
     const refundAmount = (booking.totalPrice * refundPercent) / 100
 
-    // Update booking status
-    await db.booking.update({
-      where: { id: bookingId },
-      data: {
-        bookingStatus: 'cancelled',
-        cancelledAt: new Date(),
-        cancellationReason: reason.trim(),
-        cancellationType: 'customer',
-        refundStatus: refundAmount > 0 ? 'requested' : 'none',
-        updatedAt: new Date(),
-      },
-    })
-
-    // Create cancellation log
-    await db.cancellationLog.create({
-      data: {
-        bookingId,
-        userId: authUser.id,
-        cancelledBy: 'customer',
-        reason: reason.trim(),
-        refundAmount,
-        refundProcessed: false,
-      },
-    })
-
-    // Create refund record if applicable
-    if (refundAmount > 0 && booking.paymentStatus === 'paid') {
-      await db.refund.create({
+    // Use transaction for multi-table operations
+    await db.$transaction(async (tx) => {
+      // 1. Update booking status
+      await tx.booking.update({
+        where: { id: bookingId },
         data: {
-          userId: authUser.id,
-          bookingId,
-          invoiceId: booking.invoiceId ?? null,
-          amount: refundAmount,
-          refundType: refundPercent === 100 ? 'full' : 'partial',
-          status: 'pending',
-          reason: reason.trim(),
-          requestedAt: new Date(),
+          bookingStatus: 'cancelled',
+          cancelledAt: new Date(),
+          cancellationReason: reason.trim(),
+          cancellationType: 'customer',
+          refundStatus: refundAmount > 0 && booking.paymentStatus === 'paid' ? 'requested' : 'none',
+          updatedAt: new Date(),
         },
       })
+
+      // 2. Create CancellationLog record
+      await tx.cancellationLog.create({
+        data: {
+          bookingId,
+          userId: authUser.id,
+          cancelledBy: 'customer',
+          reason: reason.trim(),
+          refundAmount,
+          refundProcessed: false,
+        },
+      })
+
+      // 3. Create Refund record if payment was made AND >24h before booking
+      if (refundAmount > 0 && booking.paymentStatus === 'paid') {
+        await tx.refund.create({
+          data: {
+            userId: authUser.id,
+            bookingId,
+            invoiceId: booking.invoiceId ?? 0,
+            amount: refundAmount,
+            refundType: 'partial',
+            status: 'pending',
+            reason: reason.trim(),
+            requestedAt: new Date(),
+          },
+        })
+      }
+
+      // 4. Update bookingAssignments: set status='cancelled' for active assignments
+      if (booking.assignment && booking.assignment.status !== 'cancelled' && booking.assignment.status !== 'completed') {
+        await tx.bookingAssignment.update({
+          where: { id: booking.assignment.id },
+          data: {
+            status: 'cancelled',
+            notes: `Cancelled by customer: ${reason.trim()}`,
+          },
+        })
+      }
+    })
+
+    // 5. Send cancellation email to customer (outside transaction — non-critical)
+    const customerEmail = booking.user?.email
+    const customerName = booking.user?.name || 'Customer'
+
+    if (customerEmail) {
+      const originalDate = format(
+        new Date(`${booking.bookingDate}T${booking.bookingTime}`),
+        'EEEE, d MMMM yyyy \'at\' h:mm a'
+      )
+
+      // Fire-and-forget — don't block on email
+      sendCancellationEmail(customerEmail, customerName, {
+        bookingId,
+        serviceName: booking.service.name,
+        originalDate,
+        refundAmount: refundAmount > 0 ? refundAmount : undefined,
+        reason: reason.trim(),
+      }).catch((emailErr) => {
+        console.error('[CancelBooking] Failed to send cancellation email:', emailErr)
+      })
+    }
+
+    // 6. Log activity (outside transaction — non-critical)
+    logBookingActivity(
+      'booking_cancelled',
+      {
+        id: authUser.id,
+        name: authUser.name,
+        email: authUser.email,
+        userType: 'customer',
+      },
+      bookingId,
+      `Booking #${bookingId}`,
+      {
+        reason: reason.trim(),
+        refundAmount,
+        refundPercent,
+        paymentStatus: booking.paymentStatus,
+        serviceName: booking.service.name,
+      }
+    )
+
+    // 7. Log payment activity if refund was created
+    if (refundAmount > 0 && booking.paymentStatus === 'paid') {
+      logPaymentActivity(
+        'refund_requested',
+        {
+          id: authUser.id,
+          name: authUser.name,
+          email: authUser.email,
+          userType: 'customer',
+        },
+        bookingId,
+        `Refund for Booking #${bookingId}`,
+        {
+          amount: refundAmount,
+          refundType: 'partial',
+          refundPercent,
+        }
+      )
     }
 
     revalidatePath('/dashboard')
     return {
       success: true,
-      message: `Booking cancelled successfully. ${refundAmount > 0 ? `Refund of £${refundAmount.toFixed(2)} (${refundPercent}%) will be processed.` : 'No refund is available for this cancellation.'}`,
+      message: `Booking cancelled successfully. ${refundAmount > 0 ? `Refund of £${refundAmount.toFixed(2)} (${refundPercent}%) will be processed within 5–10 business days.` : 'No refund is available for this cancellation.'}`,
       data: { refundAmount, refundPercent },
     }
   } catch (error) {
@@ -225,7 +306,7 @@ export async function cancelBooking(
   }
 }
 
-// ============ Reschedule Booking ============
+// ============ Reschedule Booking (Enhanced) ============
 
 export async function rescheduleBooking(
   data: RescheduleBookingData
@@ -244,11 +325,12 @@ export async function rescheduleBooking(
       return { success: false, message: 'Please select a future date and time.' }
     }
 
-    // Fetch the booking
+    // Fetch the booking with service and user info
     const booking = await db.booking.findUnique({
       where: { id: bookingId },
       include: {
         service: { select: { name: true } },
+        user: { select: { name: true, email: true } },
       },
     })
 
@@ -264,7 +346,7 @@ export async function rescheduleBooking(
       return { success: false, message: 'This booking cannot be rescheduled.' }
     }
 
-    // Check if rescheduling is >24h before original booking
+    // Check if rescheduling is >24h before original booking (24-hour rule)
     const originalDateTime = new Date(`${booking.bookingDate}T${booking.bookingTime}`)
     const now = new Date()
     const diffHours = (originalDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
@@ -276,6 +358,12 @@ export async function rescheduleBooking(
       }
     }
 
+    // Format old and new dates/times for email
+    const oldDateFormatted = format(originalDateTime, 'EEEE, d MMMM yyyy')
+    const oldTimeFormatted = format(originalDateTime, 'h:mm a')
+    const newDateFormatted = format(newDateTime, 'EEEE, d MMMM yyyy')
+    const newTimeFormatted = format(newDateTime, 'h:mm a')
+
     // Update booking
     await db.booking.update({
       where: { id: bookingId },
@@ -286,10 +374,49 @@ export async function rescheduleBooking(
       },
     })
 
+    // Send reschedule email with old/new dates (outside transaction — non-critical)
+    const customerEmail = booking.user?.email
+    const customerName = booking.user?.name || 'Customer'
+
+    if (customerEmail) {
+      // Fire-and-forget — don't block on email
+      sendRescheduleEmail(customerEmail, customerName, {
+        bookingId,
+        serviceName: booking.service.name,
+        oldDate: oldDateFormatted,
+        oldTime: oldTimeFormatted,
+        newDate: newDateFormatted,
+        newTime: newTimeFormatted,
+        address: booking.address,
+      }).catch((emailErr) => {
+        console.error('[RescheduleBooking] Failed to send reschedule email:', emailErr)
+      })
+    }
+
+    // Log activity (outside transaction — non-critical)
+    logBookingActivity(
+      'booking_rescheduled',
+      {
+        id: authUser.id,
+        name: authUser.name,
+        email: authUser.email,
+        userType: 'customer',
+      },
+      bookingId,
+      `Booking #${bookingId}`,
+      {
+        oldDate: booking.bookingDate,
+        oldTime: booking.bookingTime,
+        newDate,
+        newTime,
+        serviceName: booking.service.name,
+      }
+    )
+
     revalidatePath('/dashboard')
     return {
       success: true,
-      message: `Booking rescheduled to ${new Date(newDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at ${newTime}. A confirmation email will be sent shortly.`,
+      message: `Booking rescheduled to ${newDateFormatted} at ${newTimeFormatted}. A confirmation email will be sent shortly.`,
     }
   } catch (error) {
     console.error('Reschedule booking error:', error)

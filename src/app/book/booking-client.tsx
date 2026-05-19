@@ -38,6 +38,12 @@ import {
   Sparkles,
   Percent,
   Shield,
+  User,
+  Mail,
+  Phone,
+  Search,
+  Loader2,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -66,6 +72,25 @@ interface InitialService {
   durationHours: number;
 }
 
+// ─── Address Autocomplete Types ──────────────────────────────────────────
+
+interface NominatimResult {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  address?: {
+    house_number?: string;
+    road?: string;
+    postcode?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    country?: string;
+  };
+}
+
 const TIME_SLOTS = [
   "09:00",
   "10:00",
@@ -84,10 +109,14 @@ export function BookingClient({
   services,
   initialServiceId,
   initialService,
+  isLoggedIn,
+  loggedInUser,
 }: {
   services: ServiceOption[];
   initialServiceId: number | null;
   initialService: InitialService | null;
+  isLoggedIn: boolean;
+  loggedInUser: { name: string; email: string } | null;
 }) {
   const [selectedServiceId, setSelectedServiceId] = React.useState<string>(
     initialServiceId ? String(initialServiceId) : ""
@@ -101,11 +130,25 @@ export function BookingClient({
   const [paymentMethod, setPaymentMethod] = React.useState<
     "cash" | "online"
   >("cash");
-  const [guestName, setGuestName] = React.useState("");
-  const [guestEmail, setGuestEmail] = React.useState("");
+  const [guestName, setGuestName] = React.useState(
+    loggedInUser?.name || ""
+  );
+  const [guestEmail, setGuestEmail] = React.useState(
+    loggedInUser?.email || ""
+  );
   const [guestPhone, setGuestPhone] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
+
+  // Address autocomplete state
+  const [addressQuery, setAddressQuery] = React.useState("");
+  const [addressSuggestions, setAddressSuggestions] = React.useState<
+    NominatimResult[]
+  >([]);
+  const [addressLoading, setAddressLoading] = React.useState(false);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const addressInputRef = React.useRef<HTMLInputElement>(null);
+  const suggestionsRef = React.useRef<HTMLDivElement>(null);
 
   const selectedService = services.find(
     (s) => s.id === parseInt(selectedServiceId, 10)
@@ -115,6 +158,68 @@ export function BookingClient({
   const discountPercent = paymentMethod === "online" ? 5 : 0;
   const discountAmount = basePrice * (discountPercent / 100);
   const totalPrice = basePrice - discountAmount;
+
+  // ─── Address Autocomplete (Debounced) ───────────────────────────────
+
+  React.useEffect(() => {
+    if (!addressQuery.trim() || addressQuery.trim().length < 3) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setAddressLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}&countrycodes=gb&limit=5&addressdetails=1`,
+          {
+            headers: {
+              "Accept-Language": "en-GB",
+            },
+          }
+        );
+        const data: NominatimResult[] = await res.json();
+        setAddressSuggestions(data);
+        setShowSuggestions(data.length > 0);
+      } catch {
+        setAddressSuggestions([]);
+      } finally {
+        setAddressLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [addressQuery]);
+
+  // Close suggestions on click outside
+  React.useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target as Node) &&
+        addressInputRef.current &&
+        !addressInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleSelectAddress(suggestion: NominatimResult) {
+    setAddress(suggestion.display_name);
+    setAddressQuery("");
+    setShowSuggestions(false);
+  }
+
+  function handleAddressInputChange(value: string) {
+    setAddress(value);
+    setAddressQuery(value);
+  }
+
+  // ─── Form Logic ─────────────────────────────────────────────────────
 
   const formatTimeSlot = (time: string) => {
     const [h] = time.split(":").map(Number);
@@ -126,6 +231,14 @@ export function BookingClient({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedService || !selectedDate || !selectedTime || !address) return;
+
+    // Guest validation: if not logged in, all guest fields are required
+    if (!isLoggedIn) {
+      if (!guestName.trim() || !guestEmail.trim() || !guestPhone.trim()) {
+        alert("Please fill in your name, email, and phone number to continue.");
+        return;
+      }
+    }
 
     setIsSubmitting(true);
 
@@ -170,13 +283,89 @@ export function BookingClient({
     selectedServiceId &&
     selectedDate &&
     selectedTime &&
-    address.trim().length > 0;
+    address.trim().length > 0 &&
+    (isLoggedIn || (guestName.trim() && guestEmail.trim() && guestPhone.trim()));
 
   return (
     <form onSubmit={handleSubmit}>
       <div className="grid gap-8 lg:grid-cols-3">
         {/* ── Left: Booking Form ── */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Guest Fields (only when NOT logged in) */}
+          {!isLoggedIn && (
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5 text-primary" />
+                  Your Details
+                </CardTitle>
+                <CardDescription>
+                  Please provide your contact information so we can confirm your booking.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="guest-name">
+                      Full Name <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="guest-name"
+                        placeholder="John Smith"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        className="pl-9"
+                        required={!isLoggedIn}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="guest-phone">
+                      Phone Number <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="guest-phone"
+                        placeholder="07700 000 000"
+                        value={guestPhone}
+                        onChange={(e) => setGuestPhone(e.target.value)}
+                        className="pl-9"
+                        required={!isLoggedIn}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-email">
+                    Email Address <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="guest-email"
+                      type="email"
+                      placeholder="john@example.com"
+                      value={guestEmail}
+                      onChange={(e) => setGuestEmail(e.target.value)}
+                      className="pl-9"
+                      required={!isLoggedIn}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  You can also{" "}
+                  <Link href="/login" className="text-primary underline underline-offset-2 hover:text-primary/80">
+                    log in
+                  </Link>{" "}
+                  to access your booking history and manage future bookings.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Service Selection */}
           <Card>
             <CardHeader>
@@ -308,7 +497,7 @@ export function BookingClient({
             </CardContent>
           </Card>
 
-          {/* Address & Notes */}
+          {/* Address & Notes with Autocomplete */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -320,18 +509,76 @@ export function BookingClient({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Address with Autocomplete */}
               <div className="space-y-2">
                 <Label htmlFor="address">
                   Full Address <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="address"
-                  placeholder="e.g. 42 High Street, London, NW1 2AB"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      ref={addressInputRef}
+                      id="address"
+                      placeholder="Start typing your address for suggestions..."
+                      value={address}
+                      onChange={(e) => handleAddressInputChange(e.target.value)}
+                      onFocus={() => {
+                        if (addressSuggestions.length > 0) setShowSuggestions(true);
+                      }}
+                      required
+                      className="pl-9 pr-9"
+                    />
+                    {address && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddress("");
+                          setAddressQuery("");
+                          setAddressSuggestions([]);
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                    {addressLoading && (
+                      <Loader2 className="absolute right-9 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+
+                  {/* Suggestions Dropdown */}
+                  {showSuggestions && addressSuggestions.length > 0 && (
+                    <div
+                      ref={suggestionsRef}
+                      className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg max-h-60 overflow-y-auto"
+                    >
+                      {addressSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.place_id}
+                          type="button"
+                          onClick={() => handleSelectAddress(suggestion)}
+                          className="flex items-start gap-3 w-full px-4 py-3 text-left hover:bg-accent transition-colors border-b last:border-b-0"
+                        >
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {suggestion.display_name.split(", ").slice(0, 3).join(", ")}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {suggestion.display_name}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  UK addresses only. Start typing to see suggestions powered by OpenStreetMap.
+                </p>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="access-notes">
                   <span className="flex items-center gap-1.5">
@@ -414,7 +661,7 @@ export function BookingClient({
                     <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                       <span className="font-semibold text-sm">
-                        Pay Online Now
+                        Pay Online (5% discount)
                       </span>
                       <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
                         <Percent className="h-3 w-3 mr-0.5" />
@@ -429,54 +676,12 @@ export function BookingClient({
                 </label>
               </RadioGroup>
 
-              {/* Guest Fields for Online Payment */}
-              {paymentMethod === "online" && (
-                <div className="space-y-4 pt-2">
-                  <Separator />
-                  <p className="text-sm font-medium text-muted-foreground">
-                    To process your online payment, please provide your
-                    contact details:
+              {/* Guest Email for Booking Confirmation */}
+              {paymentMethod === "online" && !isLoggedIn && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Your contact details above will be used for payment processing and booking confirmation.
                   </p>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="guest-name">
-                        Full Name <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="guest-name"
-                        placeholder="John Smith"
-                        value={guestName}
-                        onChange={(e) => setGuestName(e.target.value)}
-                        required={paymentMethod === "online"}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="guest-phone">
-                        Phone Number{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="guest-phone"
-                        placeholder="07700 000 000"
-                        value={guestPhone}
-                        onChange={(e) => setGuestPhone(e.target.value)}
-                        required={paymentMethod === "online"}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="guest-email">
-                      Email Address <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="guest-email"
-                      type="email"
-                      placeholder="john@example.com"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      required={paymentMethod === "online"}
-                    />
-                  </div>
                 </div>
               )}
             </CardContent>
@@ -491,6 +696,36 @@ export function BookingClient({
                 <CardTitle>Booking Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Customer Info (when logged in) */}
+                {isLoggedIn && loggedInUser && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Customer
+                      </p>
+                      <p className="text-sm font-semibold">{loggedInUser.name}</p>
+                      <p className="text-xs text-muted-foreground">{loggedInUser.email}</p>
+                    </div>
+                    <Separator />
+                  </>
+                )}
+
+                {/* Guest Info (when not logged in and filled in) */}
+                {!isLoggedIn && guestName && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Customer
+                      </p>
+                      <p className="text-sm font-semibold">{guestName}</p>
+                      {guestEmail && (
+                        <p className="text-xs text-muted-foreground">{guestEmail}</p>
+                      )}
+                    </div>
+                    <Separator />
+                  </>
+                )}
+
                 {/* Service */}
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -584,8 +819,13 @@ export function BookingClient({
                 >
                   {isSubmitting ? (
                     <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Processing...
+                    </span>
+                  ) : paymentMethod === "online" ? (
+                    <span className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      Pay {CURRENCY}{totalPrice.toFixed(2)} Online
                     </span>
                   ) : (
                     <span className="flex items-center gap-2">
@@ -594,6 +834,13 @@ export function BookingClient({
                     </span>
                   )}
                 </Button>
+
+                {/* Payment method subtext */}
+                {paymentMethod === "cash" && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    No payment now — pay {CURRENCY}{totalPrice.toFixed(2)} after service
+                  </p>
+                )}
 
                 {!isFormValid && (
                   <p className="text-xs text-muted-foreground text-center">

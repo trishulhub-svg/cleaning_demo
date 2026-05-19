@@ -14,6 +14,9 @@ import {
   Menu,
   X,
   Leaf,
+  CircleHelp,
+  ScrollText,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,11 +25,14 @@ import { useState } from "react";
 const navItems = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Bookings", href: "/admin/bookings", icon: CalendarDays },
+  { label: "Today's Bookings", href: "/admin/todays-bookings", icon: CalendarClock },
   { label: "Staff", href: "/admin/staff", icon: Users },
   { label: "Services", href: "/admin/services", icon: Sparkles },
+  { label: "FAQs", href: "/admin/faqs", icon: CircleHelp },
   { label: "Reports", href: "/admin/reports", icon: BarChart3 },
   { label: "Refunds", href: "/admin/refunds", icon: RotateCcw },
   { label: "Customers", href: "/admin/customers", icon: UserCircle },
+  { label: "Activity Logs", href: "/admin/logs", icon: ScrollText },
 ];
 
 export function AdminSidebar({ adminName }: { adminName: string }) {

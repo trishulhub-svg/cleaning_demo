@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getAuthSession } from "@/lib/auth-helpers";
 import { BookingClient } from "./booking-client";
 
 // ─── Data Fetching ───────────────────────────────────────────────────────
@@ -33,6 +34,16 @@ export default async function BookPage({ searchParams }: BookPageProps) {
   const { service: serviceId } = await searchParams;
 
   const allServices = await getAllServices();
+
+  // Check if user is logged in
+  const session = await getAuthSession();
+  const isLoggedIn = !!session?.user;
+  const loggedInUser = session?.user
+    ? {
+        name: session.user.name,
+        email: session.user.email,
+      }
+    : null;
 
   const serializedServices = allServices.map((s) => ({
     id: s.id,
@@ -89,6 +100,8 @@ export default async function BookPage({ searchParams }: BookPageProps) {
                   durationHours: selectedService.durationHours,
                 }
               : null}
+            isLoggedIn={isLoggedIn}
+            loggedInUser={loggedInUser}
           />
         </div>
       </section>

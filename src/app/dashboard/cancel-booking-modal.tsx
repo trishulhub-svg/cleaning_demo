@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { toast } from 'sonner'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertTriangle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -52,6 +52,7 @@ function calculateRefund(booking: BookingForCancel) {
       eligible: true,
       refundPercent,
       refundAmount,
+      diffHours,
       message: `You are eligible for a ${refundPercent}% refund.`,
     }
   }
@@ -61,6 +62,7 @@ function calculateRefund(booking: BookingForCancel) {
       eligible: false,
       refundPercent: 0,
       refundAmount: 0,
+      diffHours,
       message: 'Cancellations within 24 hours are not eligible for a refund.',
     }
   }
@@ -69,6 +71,7 @@ function calculateRefund(booking: BookingForCancel) {
     eligible: false,
     refundPercent: 0,
     refundAmount: 0,
+    diffHours: 0,
     message: 'This booking has already passed and cannot be cancelled.',
   }
 }
@@ -84,6 +87,21 @@ function formatBookingDate(date: string, time: string) {
   })
 }
 
+function formatTimeRemaining(diffHours: number): string {
+  if (diffHours <= 0) return 'Passed'
+
+  if (diffHours >= 48) {
+    const days = Math.floor(diffHours / 24)
+    const remainingHours = Math.floor(diffHours % 24)
+    if (remainingHours === 0) return `${days} day${days > 1 ? 's' : ''}`
+    return `${days} day${days > 1 ? 's' : ''} ${remainingHours}h`
+  }
+
+  const hours = Math.floor(diffHours)
+  const minutes = Math.floor((diffHours - hours) * 60)
+  return `${hours}h ${minutes}m`
+}
+
 // ============ Component ============
 
 export function CancelBookingModal({
@@ -94,10 +112,28 @@ export function CancelBookingModal({
 }: CancelBookingModalProps) {
   const [reason, setReason] = React.useState('')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [timeRemaining, setTimeRemaining] = React.useState('')
 
   React.useEffect(() => {
     if (!open) setReason('')
   }, [open])
+
+  // Update time remaining every minute
+  React.useEffect(() => {
+    if (!open || !booking) return
+
+    function updateRemaining() {
+      const now = new Date()
+      const bookingDateTime = new Date(`${booking.bookingDate}T${booking.bookingTime}`)
+      const diffMs = bookingDateTime.getTime() - now.getTime()
+      const diffHours = diffMs / (1000 * 60 * 60)
+      setTimeRemaining(formatTimeRemaining(diffHours))
+    }
+
+    updateRemaining()
+    const interval = setInterval(updateRemaining, 60000) // every 60s
+    return () => clearInterval(interval)
+  }, [open, booking])
 
   if (!booking) return null
 
@@ -171,6 +207,15 @@ export function CancelBookingModal({
             </div>
           </div>
 
+          {/* Time Remaining Until Booking */}
+          <div className="rounded-lg border border-muted bg-muted/20 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Time until booking:</span>
+              <span className="font-semibold text-foreground">{timeRemaining}</span>
+            </div>
+          </div>
+
           {/* Refund Info */}
           <div
             className={`rounded-lg border p-4 ${
@@ -201,6 +246,17 @@ export function CancelBookingModal({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Clear 24-hour Warning */}
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+              <p className="text-xs text-destructive font-medium">
+                Cancellations within 24 hours of the booking are not eligible for a refund. If you need
+                to cancel within this window, please contact our support team for assistance.
+              </p>
             </div>
           </div>
 
