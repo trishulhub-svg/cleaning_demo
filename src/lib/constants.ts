@@ -2,6 +2,8 @@ export const APP_NAME = "GreenLeaf Cleaning";
 
 export const CURRENCY = "£";
 
+export const SITE_URL = process.env.APP_URL || process.env.NEXTAUTH_URL || "https://localhost:3000";
+
 // ============ User Types ============
 export type UserType = "customer" | "admin" | "staff";
 
