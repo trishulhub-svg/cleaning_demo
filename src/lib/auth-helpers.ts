@@ -1,24 +1,65 @@
-import { getServerSession } from "next-auth"
-import { redirect } from "next/navigation"
-import bcrypt from "bcryptjs"
-import { db } from "@/lib/db"
-import { authOptions } from "@/lib/auth"
-import type { UserType } from "@/lib/constants"
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import { db } from '@/lib/db'
+import type { UserType } from '@/lib/constants'
 
-// ============ Session Helpers ============
+// ============ Custom Session (bypasses broken next-auth signIn) ============
+
+interface SessionUser {
+  id: number
+  name: string
+  email: string
+  role: string
+  userType: UserType
+}
+
+interface CustomSession {
+  user: SessionUser
+}
 
 /**
- * Get the current server session with extended user type information.
+ * Read the session from the next-auth cookie directly.
+ * This bypasses getServerSession which depends on next-auth internals
+ * that may not work with Next.js 16.
  */
-export async function getAuthSession() {
-  return getServerSession(authOptions)
+export async function getAuthSession(): Promise<CustomSession | null> {
+  try {
+    const cookieStore = await cookies()
+    const token = cookieStore.get('next-auth.session-token')?.value
+    if (!token) return null
+
+    const secret = process.env.NEXTAUTH_SECRET
+    if (!secret) return null
+
+    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as Record<string, unknown>
+
+    const id = typeof decoded.id === 'number' ? decoded.id
+      : typeof decoded.sub === 'string' ? parseInt(decoded.sub, 10)
+      : null
+    const name = typeof decoded.name === 'string' ? decoded.name : null
+    const email = typeof decoded.email === 'string' ? decoded.email : null
+    const role = typeof decoded.role === 'string' ? decoded.role : null
+    const userType = typeof decoded.userType === 'string' ? decoded.userType as UserType : null
+
+    if (!id || !name || !email || !userType) return null
+
+    return {
+      user: { id, name, email, role: role || '', userType },
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
  * Require the user to be authenticated. Redirects to /login if not.
  * Optionally restrict to specific user types.
  */
-export async function requireAuth(allowedTypes?: UserType[]): Promise<{
+export async function requireAuth(
+  allowedTypes?: UserType[]
+): Promise<{
   id: number
   name: string
   email: string
@@ -28,7 +69,7 @@ export async function requireAuth(allowedTypes?: UserType[]): Promise<{
   const session = await getAuthSession()
 
   if (!session?.user) {
-    redirect("/login")
+    redirect('/login')
   }
 
   const user = {
@@ -39,8 +80,12 @@ export async function requireAuth(allowedTypes?: UserType[]): Promise<{
     userType: session.user.userType,
   }
 
-  if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(user.userType)) {
-    redirect("/unauthorized")
+  if (
+    allowedTypes &&
+    allowedTypes.length > 0 &&
+    !allowedTypes.includes(user.userType)
+  ) {
+    redirect('/unauthorized')
   }
 
   return user
@@ -57,7 +102,7 @@ export async function getCurrentUser() {
   const { userType, id } = session.user
 
   switch (userType) {
-    case "customer": {
+    case 'customer': {
       const user = await db.user.findUnique({
         where: { id },
         select: {
@@ -72,9 +117,9 @@ export async function getCurrentUser() {
         },
       })
       if (!user) return null
-      return { ...user, userType: "customer" as const }
+      return { ...user, userType: 'customer' as const }
     }
-    case "admin": {
+    case 'admin': {
       const admin = await db.admin.findUnique({
         where: { id },
         select: {
@@ -86,9 +131,9 @@ export async function getCurrentUser() {
         },
       })
       if (!admin) return null
-      return { ...admin, userType: "admin" as const }
+      return { ...admin, userType: 'admin' as const }
     }
-    case "staff": {
+    case 'staff': {
       const staff = await db.staff.findUnique({
         where: { id },
         select: {
@@ -103,7 +148,7 @@ export async function getCurrentUser() {
         },
       })
       if (!staff) return null
-      return { ...staff, userType: "staff" as const }
+      return { ...staff, userType: 'staff' as const }
     }
     default:
       return null

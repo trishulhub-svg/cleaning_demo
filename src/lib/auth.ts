@@ -84,7 +84,6 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      // On initial sign in, embed user data into the JWT token
       if (user) {
         token.id = user.id
         token.name = user.name
@@ -95,7 +94,6 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      // Pass token data through to the client session
       if (session.user) {
         session.user.id = token.id as number
         session.user.name = token.name as string

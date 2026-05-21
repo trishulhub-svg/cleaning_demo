@@ -75,10 +75,9 @@ export async function POST(request: NextRequest) {
     let userEmail: string | null = null;
 
     if (sessionCookie) {
-      // Try to get user from session
-      const { getServerSession } = await import("next-auth");
-      const { authOptions } = await import("@/lib/auth");
-      const session = await getServerSession(authOptions);
+      // Try to get user from session using our custom reader
+      const { getAuthSession } = await import("@/lib/auth-helpers");
+      const session = await getAuthSession();
 
       if (session?.user) {
         userId = session.user.id;

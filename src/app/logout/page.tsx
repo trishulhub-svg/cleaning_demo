@@ -1,8 +1,9 @@
-import { signOut } from "next-auth"
-import { redirect } from "next/navigation"
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 export default async function LogoutPage() {
-  // Immediately sign out and redirect to home
-  await signOut({ redirect: false })
-  redirect("/")
+  const cookieStore = await cookies()
+  cookieStore.delete('next-auth.session-token')
+  cookieStore.delete('__Secure-next-auth.session-token')
+  redirect('/')
 }
