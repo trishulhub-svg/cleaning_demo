@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSQL } from '@prisma/adapter-libsql'
-import { createClient } from '@libsql/client'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -9,9 +8,6 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   const dbUrl = process.env.TURSO_DB_URL
   const authToken = process.env.TURSO_AUTH_TOKEN
-
-  console.log('[db] TURSO_DB_URL:', dbUrl ? `${dbUrl.substring(0, 20)}...` : 'MISSING')
-  console.log('[db] TURSO_AUTH_TOKEN:', authToken ? 'SET' : 'MISSING')
 
   if (!dbUrl) {
     throw new Error(
@@ -28,11 +24,14 @@ function createPrismaClient() {
     )
   }
 
-  const libsql = createClient({
+  // Pass config object (NOT a pre-created client) to the adapter.
+  // The adapter's connect() method calls createClient(this.#config) internally,
+  // so it needs { url, authToken }, not a LibSQLClient instance.
+  const adapter = new PrismaLibSQL({
     url: dbUrl,
     authToken: authToken,
   })
-  const adapter = new PrismaLibSQL(libsql)
+
   return new PrismaClient({
     adapter,
     log: ['error'],
