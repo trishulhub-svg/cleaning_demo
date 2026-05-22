@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Leaf,
   Phone,
@@ -31,6 +32,13 @@ const serviceLinks = [
 ];
 
 export function SiteFooter() {
+  const pathname = usePathname();
+
+  // Hide public footer on staff and admin routes (they have their own layouts)
+  if (pathname.startsWith('/staff') || pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <footer className="bg-primary text-primary-foreground">
       {/* Main Footer */}

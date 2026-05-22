@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { Leaf, Menu, Phone, LogOut, User, LayoutDashboard, ChevronDown, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,16 @@ import { APP_NAME, NAV_LINKS, COMPANY_PHONE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function SiteHeader() {
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
+
+  // Hide public header on staff and admin routes (they have their own layouts)
+  if (pathname.startsWith('/staff') || pathname.startsWith('/admin')) {
+    return null;
+  }
 
   React.useEffect(() => {
     const handleScroll = () => {
