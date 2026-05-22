@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Leaf, LogOut } from "lucide-react";
+import { Leaf, LogOut, UserCircle } from "lucide-react";
 
 export default async function StaffLayout({
   children,
@@ -63,6 +63,15 @@ export default async function StaffLayout({
               </div>
 
               <div className="h-8 w-px bg-gray-200" />
+
+              <Link
+                href="/staff/profile"
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100"
+                title="My Profile"
+              >
+                <UserCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Profile</span>
+              </Link>
 
               <Link
                 href="/logout"

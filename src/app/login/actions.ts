@@ -19,6 +19,7 @@ interface AuthUser {
   email: string
   role: string
   userType: UserType
+  mustChangePassword?: boolean
 }
 
 async function authenticateUser(
@@ -87,6 +88,7 @@ async function authenticateUser(
       email: staff.email,
       role: staff.role,
       userType: USER_TYPES.STAFF,
+      mustChangePassword: staff.mustChangePassword,
     }
   }
 
@@ -112,25 +114,22 @@ export async function loginAction(
       throw new Error('Authentication system is not properly configured.')
     }
 
-    // Build a JWT payload that is fully compatible with next-auth v4
-    // next-auth expects: sub, name, email, picture, plus our custom fields
     const now = Math.floor(Date.now() / 1000)
     const tokenPayload = {
-      sub: String(user.id),   // next-auth uses 'sub' for user ID
+      sub: String(user.id),
       name: user.name,
       email: user.email,
       picture: null,
-      // Custom fields added by our jwt() callback in auth.ts
       id: user.id,
       role: user.role,
       userType: user.userType,
+      mustChangePassword: user.mustChangePassword ?? false,
       iat: now,
-      exp: now + 30 * 24 * 60 * 60, // 30 days
+      exp: now + 30 * 24 * 60 * 60,
     }
 
     const token = jwt.sign(tokenPayload, secret, { algorithm: 'HS256' })
 
-    // Set the session cookie using the same name next-auth uses
     const cookieStore = await cookies()
     const isProduction = process.env.NODE_ENV === 'production'
     cookieStore.set('next-auth.session-token', token, {
@@ -141,10 +140,14 @@ export async function loginAction(
       maxAge: 30 * 24 * 60 * 60,
     })
 
-    // Determine redirect URL based on user type
     const callbackUrl = formData.get('callbackUrl') as string
     if (callbackUrl) {
       return { success: true, url: callbackUrl }
+    }
+
+    // Staff with mustChangePassword → redirect to set password page
+    if (user.userType === USER_TYPES.STAFF && user.mustChangePassword) {
+      return { success: true, url: '/staff/change-password' }
     }
 
     switch (user.userType) {
