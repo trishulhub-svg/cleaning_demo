@@ -139,7 +139,6 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
         totalAmount: amount,
         paymentMethod: "stripe",
         paymentStatus: "paid",
-        paymentIntent: paymentIntentId,
       },
     });
     invoiceId = invoice.id;
@@ -155,7 +154,6 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
       where: { id: invoiceId },
       data: {
         paymentStatus: "paid",
-        paymentIntent: paymentIntentId,
         totalAmount: amount,
         updatedAt: new Date(),
       },

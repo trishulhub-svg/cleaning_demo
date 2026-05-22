@@ -80,7 +80,19 @@ export async function POST(request: NextRequest) {
       const session = await getAuthSession();
 
       if (session?.user) {
-        userId = session.user.id;
+        // Only link to User table for actual customers (not staff/admin whose IDs
+        // live in different tables and would break the FK constraint on Booking.userId → User.id)
+        if (session.user.userType === "customer" && session.user.id) {
+          // Verify the user record actually exists in the User table
+          const userExists = await db.user.findUnique({
+            where: { id: session.user.id },
+            select: { id: true },
+          });
+          if (userExists) {
+            userId = session.user.id;
+          }
+        }
+        // Always use name/email from session for guest fields regardless
         userName = session.user.name;
         userEmail = session.user.email;
       }
