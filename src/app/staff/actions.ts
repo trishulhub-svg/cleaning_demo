@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
-import { generateCompletionCode } from "@/lib/qr-generator";
+import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
 import { CURRENCY } from "@/lib/constants";
 import { logBookingActivity, logPaymentActivity } from "@/lib/activity-logger";
 
@@ -66,10 +66,17 @@ export async function startAssignment(
       return { success: false, message: "This booking has been cancelled." };
     }
 
-    // Generate QR completion code
+    // Generate QR completion code + actual scannable QR image
     const qrCode = generateCompletionCode();
+    // Generate QR code image
+    let qrImageData: string | null = null;
+    try {
+      qrImageData = await generateQRImage(qrCode);
+    } catch (err) {
+      console.error("[Staff] Failed to generate QR image:", err);
+    }
 
-    // Update assignment status + QR code, and booking status + QR code
+    // Update assignment status + QR code + QR image, and booking status + QR code + QR image
     await db.$transaction([
       db.bookingAssignment.update({
         where: { id: assignmentId },
@@ -77,6 +84,7 @@ export async function startAssignment(
           status: "in_progress",
           startedAt: new Date(),
           qrCode,
+          qrImageData,
         },
       }),
       db.booking.update({
@@ -84,6 +92,7 @@ export async function startAssignment(
         data: {
           bookingStatus: "confirmed",
           qrCompletionCode: qrCode,
+          qrImageData,
           updatedAt: new Date(),
         },
       }),

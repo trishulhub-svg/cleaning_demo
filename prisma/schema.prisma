@@ -127,6 +127,7 @@ model Booking {
   invoiceId          Int?      // FK to Invoice (one-to-one: one booking has one invoice)
   bookingStatus      String    @default("pending") // pending, confirmed, in_progress, completed, cancelled, cash_pending
   qrCompletionCode   String?
+  qrImageData        String?
   qrScannedAt        DateTime?
   completedBy        String?   // name of person who completed the service
   completedAt        DateTime? // when the service was completed
@@ -244,6 +245,7 @@ model BookingAssignment {
   assignedBy  Int
   status      String    @default("assigned") // assigned, in_progress, completed, cancelled, cash_pending
   qrCode      String?
+  qrImageData String?
   notes       String?
   assignedAt  DateTime  @default(now())
   startedAt   DateTime?

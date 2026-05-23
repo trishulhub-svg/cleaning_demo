@@ -1,9 +1,7 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
-import { sendStaffAssignmentEmail } from "@/lib/email";
 import { logBookingActivity, logStaffActivity } from "@/lib/activity-logger";
-import { SITE_URL } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +26,6 @@ export async function POST(req: NextRequest) {
         booking: {
           include: {
             service: { select: { name: true } },
-            user: { select: { name: true, email: true, phone: true } },
           },
         },
         staff: {
@@ -120,30 +117,6 @@ export async function POST(req: NextRequest) {
         },
       }),
     ]);
-
-    // ── Send email to NEW staff member ──
-    const booking = assignment.booking;
-    const customerName = booking.user?.name || booking.guestName || "N/A";
-    const customerPhone = booking.user?.phone || booking.guestPhone || "N/A";
-    const qrCode = assignment.qrCode;
-    const qrCodeUrl = qrCode
-      ? `${SITE_URL}/public/scan-qr?code=${encodeURIComponent(qrCode)}`
-      : undefined;
-
-    await sendStaffAssignmentEmail(newStaff.email, newStaff.name, {
-      bookingId: booking.id,
-      serviceName: booking.service.name,
-      date: booking.bookingDate,
-      time: booking.bookingTime.slice(0, 5),
-      customerName,
-      customerPhone,
-      address: booking.address,
-      notes: adminNotes || undefined,
-      qrCode: qrCode || undefined,
-      qrCodeUrl,
-    }).catch((err) => {
-      console.error("[Reassign] Failed to send staff assignment email:", err);
-    });
 
     // ── Log activities ──
     const sessionActor = {

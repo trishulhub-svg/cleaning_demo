@@ -55,6 +55,7 @@ interface BookingAssignment {
   staffId: number;
   status: string;
   qrCode: string | null;
+  qrImageData: string | null;
   notes: string | null;
   assignedAt: string;
   startedAt: string | null;
@@ -569,24 +570,42 @@ export default function BookingDetailsPage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <QrCode className="h-5 w-5 text-green-600" />
-                    Completion Code
+                    QR Code
                   </CardTitle>
                   <CardDescription>
                     {assignment.status === "completed"
-                      ? "This code was used to verify completion."
-                      : "Show this code to the customer upon completion."}
+                      ? "This QR code was used to verify completion."
+                      : assignment.status === "cash_pending"
+                        ? "Show this QR code to the customer for payment verification."
+                        : "Show this QR code to the customer upon completion."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-gray-900 rounded-xl p-4 text-center">
-                    <p className="font-mono text-xl sm:text-2xl font-bold text-green-400 tracking-widest break-all">
-                      {assignment.qrCode}
-                    </p>
-                  </div>
+                  {assignment.qrImageData ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-inner">
+                        <img
+                          src={assignment.qrImageData}
+                          alt="QR completion code"
+                          className="w-56 h-56 sm:w-64 sm:h-64"
+                        />
+                      </div>
+                      <div className="bg-gray-900 rounded-xl px-4 py-2 text-center w-full">
+                        <p className="font-mono text-sm sm:text-base font-bold text-green-400 tracking-widest break-all">
+                          {assignment.qrCode}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-900 rounded-xl p-4 text-center">
+                      <p className="font-mono text-xl sm:text-2xl font-bold text-green-400 tracking-widest break-all">
+                        {assignment.qrCode}
+                      </p>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500 mt-3 flex items-start gap-1.5">
                     <ShieldCheck className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
-                    This code uniquely identifies this job. The customer can
-                    verify completion using this code on our website.
+                    This QR code uniquely identifies this job. The customer can scan it with their phone camera to verify service completion.
                   </p>
                 </CardContent>
               </Card>

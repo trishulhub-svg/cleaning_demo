@@ -8,7 +8,7 @@ import { CheckoutClient } from "./checkout-client";
 // ============ Types ============
 
 type PageProps = {
-  searchParams: Promise<{ bookingId?: string; cancelled?: string }>;
+  searchParams: Promise<{ bookingId?: string; cancelled?: string; fromQrScan?: string }>;
 };
 
 // ============ Page Component ============
@@ -113,6 +113,7 @@ export default async function CheckoutPage({ searchParams }: PageProps) {
   );
 
   const isStripeConfigured = !!process.env.STRIPE_SECRET_KEY;
+  const fromQrScan = params.fromQrScan === "true";
 
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-b from-gray-50 to-white">
@@ -226,6 +227,7 @@ export default async function CheckoutPage({ searchParams }: PageProps) {
           bookingId={booking.id}
           totalPrice={booking.totalPrice}
           isStripeConfigured={isStripeConfigured}
+          fromQrScan={fromQrScan}
         />
 
         {/* Trust Badges */}

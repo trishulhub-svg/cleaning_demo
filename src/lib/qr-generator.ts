@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import QRCode from "qrcode";
 
 /**
  * Generate a unique QR completion code.
@@ -19,4 +20,21 @@ export function generateCompletionCode(): string {
 export function validateCode(code: string): boolean {
   const pattern = /^QR-\d{8}-[A-F0-9]{10}$/;
   return pattern.test(code);
+}
+
+/**
+ * Generate a QR code image as a base64 data URL string.
+ * @param data - The data to encode (typically the completion code)
+ * @returns Base64 data URL string like "data:image/png;base64,iVBOR..."
+ */
+export async function generateQRImage(data: string): Promise<string> {
+  return QRCode.toDataURL(data, {
+    width: 300,
+    margin: 2,
+    color: {
+      dark: "#000000",
+      light: "#ffffff",
+    },
+    errorCorrectionLevel: "M",
+  });
 }

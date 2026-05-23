@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-helpers";
 import { validateCode } from "@/lib/qr-generator";
 import { sendBookingCompletionEmail } from "@/lib/email";
-import { logActivity, logBookingActivity } from "@/lib/activity-logger";
+import { logBookingActivity } from "@/lib/activity-logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +16,16 @@ export async function POST(req: NextRequest) {
         { success: false, error: "Invalid QR code format." },
         { status: 400 }
       );
+    }
+
+    // ── Check authentication ──
+    const session = await getAuthSession();
+    if (!session?.user) {
+      return NextResponse.json({
+        success: false,
+        error: "You must be logged in to scan QR codes.",
+        needsLogin: true,
+      });
     }
 
     // ── Find assignment by QR code ──
@@ -38,6 +48,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Ownership validation: customer must own this booking ──
+    if (session.user.userType === "customer") {
+      if (assignment.booking.userId !== session.user.id) {
+        return NextResponse.json({
+          success: false,
+          error: "This QR code belongs to a different booking.",
+          code: "WRONG_CUSTOMER",
+        });
+      }
+    }
+
     // ── Check assignment status ──
     if (assignment.status === "completed") {
       return NextResponse.json({
@@ -55,16 +76,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (assignment.status === "cash_pending") {
-      return NextResponse.json({
-        success: false,
-        error: "This booking is pending cash payment confirmation.",
-        code: "CASH_PENDING",
-      });
-    }
-
-    // Assignment should be in_progress (or at least assigned)
-    if (assignment.status !== "in_progress" && assignment.status !== "assigned") {
+    // Allow both in_progress and cash_pending statuses
+    if (
+      assignment.status !== "in_progress" &&
+      assignment.status !== "cash_pending"
+    ) {
       return NextResponse.json({
         success: false,
         error: "This booking is not currently active.",
@@ -90,19 +106,6 @@ export async function POST(req: NextRequest) {
     }
 
     const booking = assignment.booking;
-
-    // ── Verify ownership: check session or guest email ──
-    const session = await getAuthSession();
-    const isOwner =
-      // Logged-in customer: userId match
-      (session?.user?.userType === "customer" && session.user.id === booking.userId) ||
-      // Guest match via session email
-      (session?.user?.email &&
-        session.user.email.toLowerCase() === booking.guestEmail?.toLowerCase());
-
-    // If no session, we still allow access — the QR code itself is the verification
-    // But we flag it so the frontend can prompt for verification if needed
-    const needsGuestVerification = !isOwner && !session?.user;
 
     // ── Branch: prepaid vs cash/pending ──
     if (booking.paymentStatus === "paid") {
@@ -143,14 +146,12 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Log activity ──
-      const sessionActor = session?.user
-        ? {
-            userType: session.user.userType,
-            id: session.user.id,
-            name: session.user.name || "Customer",
-            email: session.user.email,
-          }
-        : null;
+      const sessionActor = {
+        userType: session.user.userType,
+        id: session.user.id,
+        name: session.user.name || "Customer",
+        email: session.user.email,
+      };
 
       await logBookingActivity(
         "booking_completed_via_qr",
@@ -184,7 +185,6 @@ export async function POST(req: NextRequest) {
       autoCompleted: false,
       booking: bookingData,
       requiresPayment: true,
-      needsGuestVerification,
     });
   } catch (error) {
     console.error("[QR-Scan] Error processing QR scan:", error);

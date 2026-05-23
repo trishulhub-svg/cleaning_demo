@@ -1,10 +1,7 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
-import { generateCompletionCode } from "@/lib/qr-generator";
-import { sendStaffAssignmentEmail } from "@/lib/email";
 import { logBookingActivity, logStaffActivity } from "@/lib/activity-logger";
-import { SITE_URL, APP_NAME } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +24,6 @@ export async function POST(req: NextRequest) {
       where: { id: bookingId },
       include: {
         service: { select: { name: true } },
-        user: { select: { name: true, email: true, phone: true } },
         assignedStaff: { select: { id: true, name: true } },
         assignment: true,
       },
@@ -86,17 +82,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Generate QR code ──
-    const qrCode = generateCompletionCode();
-
-    // ── Create assignment with QR code ──
+    // ── Create assignment (no QR code — generated when staff starts cleaning) ──
     const assignment = await db.bookingAssignment.create({
       data: {
         bookingId,
         staffId,
         assignedBy: admin.id,
         status: "assigned",
-        qrCode,
         notes: notes || null,
       },
     });
@@ -106,32 +98,9 @@ export async function POST(req: NextRequest) {
       where: { id: bookingId },
       data: {
         assignedStaffId: staffId,
-        qrCompletionCode: qrCode,
         bookingStatus: "confirmed",
         updatedAt: new Date(),
       },
-    });
-
-    // ── Build QR code URL for email ──
-    const qrCodeUrl = `${SITE_URL}/public/scan-qr?code=${encodeURIComponent(qrCode)}`;
-
-    // ── Send staff assignment email ──
-    const customerName = booking.user?.name || booking.guestName || "N/A";
-    const customerPhone = booking.user?.phone || booking.guestPhone || "N/A";
-
-    await sendStaffAssignmentEmail(staff.email, staff.name, {
-      bookingId: booking.id,
-      serviceName: booking.service.name,
-      date: booking.bookingDate,
-      time: booking.bookingTime.slice(0, 5),
-      customerName,
-      customerPhone,
-      address: booking.address,
-      notes: notes || undefined,
-      qrCode,
-      qrCodeUrl,
-    }).catch((err) => {
-      console.error("[Assign] Failed to send staff assignment email:", err);
     });
 
     // ── Log activities ──
@@ -151,7 +120,6 @@ export async function POST(req: NextRequest) {
       {
         staffId,
         staffName: staff.name,
-        qrCode,
         notes: notes || null,
       }
     );
@@ -163,17 +131,14 @@ export async function POST(req: NextRequest) {
       staff.name,
       {
         bookingId,
-        qrCode,
       }
     );
 
     return NextResponse.json({
       success: true,
-      message: "Staff assigned successfully with QR code generated.",
+      message: "Staff assigned successfully.",
       assignment: {
         id: assignment.id,
-        qrCode,
-        qrCodeUrl,
       },
       bookingId,
       staffId,
