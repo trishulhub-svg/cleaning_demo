@@ -7,7 +7,7 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -43,7 +43,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
   const [fetched, setFetched] = useState(false);
-  const router = useRouter();
   const pathname = usePathname();
 
   const fetchSession = useCallback(async () => {
@@ -127,8 +126,6 @@ export function useSession(): UseSessionReturn {
 // ── Sign Out (client-side) ────────────────────────────────────────
 
 export function useSignOut() {
-  const router = useRouter();
-
   return useCallback(
     async (options?: { callbackUrl?: string }) => {
       try {
@@ -145,10 +142,10 @@ export function useSignOut() {
           "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       }
 
+      // Hard navigation to ensure cookies are fully cleared before the next page loads
       const callbackUrl = options?.callbackUrl || "/login";
-      router.push(callbackUrl);
-      router.refresh();
+      window.location.href = callbackUrl;
     },
-    [router]
+    []
   );
 }

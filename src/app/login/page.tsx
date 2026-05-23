@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Leaf, Loader2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { loginAction, type LoginActionResult } from "./actions"
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   const role = searchParams.get("role") as "admin" | "staff" | null
@@ -35,13 +34,13 @@ function LoginForm() {
 
   const [showPassword, setShowPassword] = React.useState(false)
 
-  // Redirect on success
+  // Redirect on success — use full page navigation to ensure
+  // the new session cookie is available for the target page
   React.useEffect(() => {
     if (state?.success && state.url) {
-      router.push(state.url)
-      router.refresh()
+      window.location.href = state.url
     }
-  }, [state, router])
+  }, [state])
 
   // Determine the display text based on role
   const isRoleView = role === "admin" || role === "staff"
