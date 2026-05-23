@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X, LayoutDashboard, UserCircle, LogOut, ScrollText } from "lucide-react";
+import { useSignOut } from "@/lib/auth-provider";
 
 interface StaffMobileNavProps {
   staffName: string;
@@ -12,6 +13,12 @@ interface StaffMobileNavProps {
 
 export function StaffMobileNav({ staffName, staffRole, initials }: StaffMobileNavProps) {
   const [open, setOpen] = useState(false);
+  const signOut = useSignOut();
+
+  const handleLogout = () => {
+    setOpen(false);
+    signOut({ callbackUrl: "/login" });
+  };
 
   return (
     <div className="md:hidden">
@@ -69,13 +76,13 @@ export function StaffMobileNav({ staffName, staffRole, initials }: StaffMobileNa
 
             <div className="border-t my-2" />
 
-            <Link
-              href="/logout"
-              className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full"
             >
               <LogOut className="h-4 w-4" />
               Logout
-            </Link>
+            </button>
           </div>
         </div>
       )}

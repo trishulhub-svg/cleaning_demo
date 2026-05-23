@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useSignOut } from "@/lib/auth-provider";
 
 const navItems = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -39,6 +40,7 @@ export function AdminSidebar({ adminName }: { adminName: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const signOut = useSignOut();
 
   const isActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";
@@ -89,7 +91,7 @@ export function AdminSidebar({ adminName }: { adminName: string }) {
           <p className="truncate text-sm font-medium text-white">{adminName}</p>
         </div>
         <button
-          onClick={() => router.push("/logout")}
+          onClick={() => signOut({ callbackUrl: "/login" })}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-red-900/30 hover:text-red-400"
         >
           <LogOut className="h-4 w-4" />

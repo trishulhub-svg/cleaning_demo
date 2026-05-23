@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useSession, useSignOut } from "@/lib/auth-provider";
 import { Leaf, Menu, Phone, LogOut, User, LayoutDashboard, ChevronDown, UserPlus, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,10 +46,12 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const signOut = useSignOut();
+
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await signOut({ callbackUrl: "/" });
+      await signOut({ callbackUrl: "/login" });
     } catch {
       setSigningOut(false);
     }

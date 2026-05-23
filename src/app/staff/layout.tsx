@@ -1,8 +1,9 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Leaf, LogOut, LayoutDashboard, UserCircle, Menu, X, ScrollText } from "lucide-react";
+import { Leaf, LayoutDashboard, UserCircle, ScrollText } from "lucide-react";
 import { StaffMobileNav } from "./mobile-nav";
+import { StaffLogoutButton } from "./logout-button";
 
 export default async function StaffLayout({
   children,
@@ -94,14 +95,7 @@ export default async function StaffLayout({
               <div className="h-8 w-px bg-gray-200 hidden sm:block" />
 
               {/* Desktop: Logout */}
-              <Link
-                href="/logout"
-                className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 transition-colors px-2 py-1.5 rounded-lg hover:bg-red-50"
-                title="Logout"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden lg:inline">Logout</span>
-              </Link>
+              <StaffLogoutButton />
 
               {/* Mobile menu */}
               <StaffMobileNav staffName={staff.name} staffRole={staff.role} initials={initials} />

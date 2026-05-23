@@ -55,10 +55,10 @@ export async function getAuthSession(): Promise<CustomSession | null> {
 
 // ============ Session Inactivity ============
 
-// Cookie maxAge: 2 hours of inactivity. The cookie gets re-set on each
+// Cookie maxAge: 5 minutes of inactivity. The cookie gets re-set on each
 // authenticated page load (sliding window). JWT itself has a 30-day exp
 // as a hard ceiling — the cookie is the inactivity gate.
-const SESSION_INACTIVITY_SECONDS = 2 * 60 * 60 // 2 hours
+const SESSION_INACTIVITY_SECONDS = 5 * 60 // 5 minutes
 
 /**
  * Re-issue the session cookie to reset the inactivity timer.

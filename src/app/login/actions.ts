@@ -133,14 +133,14 @@ export async function loginAction(
 
     const cookieStore = await cookies()
     const isProduction = process.env.NODE_ENV === 'production'
-    // Cookie maxAge: 2 hours of inactivity (sliding window, refreshed on each auth page load)
+    // Cookie maxAge: 5 minutes of inactivity (sliding window, refreshed on each auth page load)
     // JWT exp remains 30 days as hard ceiling
     cookieStore.set('next-auth.session-token', token, {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      maxAge: 2 * 60 * 60, // 2 hours
+      maxAge: 5 * 60, // 5 minutes
     })
 
     const callbackUrl = formData.get('callbackUrl') as string
