@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { USER_TYPES } from '@/lib/constants'
 import type { UserType } from '@/lib/constants'
 import jwt from 'jsonwebtoken'
+import { logAuthActivity, logSecurityActivity } from '@/lib/activity-logger'
 
 export interface LoginActionResult {
   success: boolean
@@ -132,12 +133,14 @@ export async function loginAction(
 
     const cookieStore = await cookies()
     const isProduction = process.env.NODE_ENV === 'production'
+    // Cookie maxAge: 2 hours of inactivity (sliding window, refreshed on each auth page load)
+    // JWT exp remains 30 days as hard ceiling
     cookieStore.set('next-auth.session-token', token, {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 2 * 60 * 60, // 2 hours
     })
 
     const callbackUrl = formData.get('callbackUrl') as string
@@ -147,8 +150,24 @@ export async function loginAction(
 
     // Staff with mustChangePassword → redirect to set password page
     if (user.userType === USER_TYPES.STAFF && user.mustChangePassword) {
+      logAuthActivity('user_login', {
+        userType: user.userType,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      } as any, { note: 'First login, redirected to change password' }).catch(() => {})
       return { success: true, url: '/staff/change-password' }
     }
+
+    // Log successful login (fire-and-forget)
+    logAuthActivity('user_login', {
+      userType: user.userType,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    } as any).catch(() => {})
 
     switch (user.userType) {
       case 'admin':
@@ -165,6 +184,16 @@ export async function loginAction(
       error instanceof Error
         ? error.message
         : 'An unexpected error occurred. Please try again.'
+
+    // Log failed login attempts (fire-and-forget)
+    const emailVal = formData.get('email') as string
+    if (emailVal) {
+      logSecurityActivity('failed_login', null, {
+        email: emailVal,
+        error: message,
+      }).catch(() => {})
+    }
+
     return {
       success: false,
       error: message,

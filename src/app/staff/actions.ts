@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { generateCompletionCode } from "@/lib/qr-generator";
 import { CURRENCY } from "@/lib/constants";
+import { logBookingActivity, logPaymentActivity } from "@/lib/activity-logger";
 
 // ============ Types ============
 
@@ -90,6 +91,7 @@ export async function startAssignment(
 
     revalidatePath("/staff");
     revalidatePath(`/staff/booking-details/${assignmentId}`);
+    logBookingActivity('assignment_started', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, assignmentId, `Assignment #${assignmentId}`).catch(() => {})
     return { success: true, message: "Job started successfully!" };
   } catch (error) {
     console.error("[Staff] startAssignment error:", error);
@@ -178,6 +180,7 @@ export async function completeAssignment(
 
       revalidatePath("/staff");
       revalidatePath(`/staff/booking-details/${assignmentId}`);
+      logBookingActivity('assignment_completed', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, assignmentId, `Assignment #${assignmentId}`, { paymentMethod: 'cash' }).catch(() => {})
       return {
         success: true,
         message: "Job completed! Waiting for cash payment confirmation from customer.",
@@ -246,6 +249,8 @@ export async function completeAssignment(
 
     revalidatePath("/staff");
     revalidatePath(`/staff/booking-details/${assignmentId}`);
+    logBookingActivity('assignment_completed', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, assignmentId, `Assignment #${assignmentId}`, { paymentMethod: assignment.booking.paymentMethod }).catch(() => {})
+    logPaymentActivity('payment_completed', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, assignment.booking.id, `Booking #${assignment.booking.id}`).catch(() => {})
     return {
       success: true,
       message: "Job completed successfully!",
@@ -391,6 +396,8 @@ export async function confirmCashPayment(
 
     revalidatePath("/staff");
     revalidatePath(`/staff/booking-details/${booking.assignment?.id}`);
+    logBookingActivity('cash_payment_confirmed', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, bookingId, `Booking #${bookingId}`, { amount: booking.totalPrice }).catch(() => {})
+    logPaymentActivity('cash_payment_received', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, bookingId, `Booking #${bookingId}`, { amount: booking.totalPrice }).catch(() => {})
     return {
       success: true,
       message: `Cash payment of ${CURRENCY}${booking.totalPrice.toFixed(2)} confirmed!`,

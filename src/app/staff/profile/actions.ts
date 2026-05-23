@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { hashPassword, verifyPassword } from '@/lib/auth-helpers'
+import { logAuthActivity } from '@/lib/activity-logger'
 
 export async function updateStaffProfile(_prevState: { success: boolean; error: string; message: string } | null, formData: FormData) {
   const staffId = formData.get('staffId') as string
@@ -17,6 +18,7 @@ export async function updateStaffProfile(_prevState: { success: boolean; error: 
       where: { id: parseInt(staffId, 10) },
       data: { name: name.trim(), phone: phone.trim() },
     })
+    logAuthActivity('profile_updated', { userType: 'staff', id: parseInt(staffId, 10), name: name.trim(), email: '' }).catch(() => {})
     return { success: true, error: '', message: 'Profile updated successfully.' }
   } catch (err) {
     console.error('[StaffProfile] Update error:', err)
@@ -56,6 +58,7 @@ export async function changeStaffPassword(_prevState: { success: boolean; error:
       where: { id: parseInt(staffId, 10) },
       data: { password: hashed, mustChangePassword: false },
     })
+    logAuthActivity('password_changed', { userType: 'staff', id: parseInt(staffId, 10), name: staff.name, email: staff.email || '' }).catch(() => {})
     return { success: true, error: '', message: 'Password changed successfully.' }
   } catch (err) {
     console.error('[StaffProfile] Password change error:', err)

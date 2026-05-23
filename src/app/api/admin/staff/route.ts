@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { hashPassword } from "@/lib/auth-helpers";
+import { hashPassword, requireAuth } from "@/lib/auth-helpers";
+import { logStaffActivity, logAuthActivity } from "@/lib/activity-logger";
 
 export async function GET() {
   try {
@@ -24,6 +25,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const admin = await requireAuth(["admin"]);
     const body = await req.json();
     const { name, email, phone, role } = body;
 
@@ -58,6 +60,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Log staff creation (fire-and-forget)
+    logStaffActivity('staff_created', { userType: 'admin', id: admin.id, name: admin.name, email: admin.email || '' }, newStaff.id, newStaff.name).catch(() => {})
+
     return NextResponse.json(
       { staff: newStaff, tempPassword: tempPass },
       { status: 201 }
@@ -73,6 +78,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const admin = await requireAuth(["admin"]);
     const body = await req.json();
     const { staffId, action, ...data } = body;
 
@@ -104,6 +110,7 @@ export async function PATCH(req: NextRequest) {
         where: { id: staffId },
         data: { isActive: !current.isActive, updatedAt: new Date() },
       });
+      logStaffActivity('staff_status_changed', { userType: 'admin', id: admin.id, name: admin.name, email: admin.email || '' }, staffId, current.name, { newStatus: !current.isActive }).catch(() => {})
       return NextResponse.json({ staff });
     }
 
@@ -119,6 +126,7 @@ export async function PATCH(req: NextRequest) {
           updatedAt: new Date(),
         },
       });
+      logAuthActivity('staff_password_reset', { userType: 'admin', id: admin.id, name: admin.name, email: admin.email || '' }, { targetStaffId: staffId, targetStaffName: staff.name }).catch(() => {})
       return NextResponse.json({ staff, tempPassword: tempPass });
     }
 

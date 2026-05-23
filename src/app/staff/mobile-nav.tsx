@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, LayoutDashboard, UserCircle, LogOut } from "lucide-react";
+import { Menu, X, LayoutDashboard, UserCircle, LogOut, ScrollText } from "lucide-react";
 
 interface StaffMobileNavProps {
   staffName: string;
@@ -57,6 +57,14 @@ export function StaffMobileNav({ staffName, staffRole, initials }: StaffMobileNa
             >
               <UserCircle className="h-4 w-4" />
               Profile
+            </Link>
+            <Link
+              href="/staff/activity-logs"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+            >
+              <ScrollText className="h-4 w-4" />
+              Activity Logs
             </Link>
 
             <div className="border-t my-2" />

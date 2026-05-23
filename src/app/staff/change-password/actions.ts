@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth-helpers'
 import { redirect } from 'next/navigation'
+import { logAuthActivity } from '@/lib/activity-logger'
 
 export async function setNewStaffPassword(
   _prevState: { success: boolean; error: string } | null,
@@ -40,7 +41,7 @@ export async function setNewStaffPassword(
         mustChangePassword: false,
       },
     })
-
+    logAuthActivity('password_changed_first_login', { userType: 'staff', id: parseInt(staffId, 10), name: '', email: '' }).catch(() => {})
     return { success: true, error: '', redirect: '/staff' }
   } catch (error) {
     console.error('[SetNewPassword] Error:', error)

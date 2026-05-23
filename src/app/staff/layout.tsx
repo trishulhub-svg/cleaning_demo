@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Leaf, LogOut, LayoutDashboard, UserCircle, Menu, X } from "lucide-react";
+import { Leaf, LogOut, LayoutDashboard, UserCircle, Menu, X, ScrollText } from "lucide-react";
 import { StaffMobileNav } from "./mobile-nav";
 
 export default async function StaffLayout({
@@ -62,6 +62,13 @@ export default async function StaffLayout({
               >
                 <UserCircle className="h-4 w-4" />
                 Profile
+              </Link>
+              <Link
+                href="/staff/activity-logs"
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-green-700 bg-gray-100 hover:bg-green-50 px-3 py-2 rounded-lg transition-colors"
+              >
+                <ScrollText className="h-4 w-4" />
+                Activity Logs
               </Link>
             </nav>
 

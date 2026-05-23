@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { Leaf, Menu, Phone, LogOut, User, LayoutDashboard, ChevronDown, UserPlus } from "lucide-react";
+import { Leaf, Menu, Phone, LogOut, User, LayoutDashboard, ChevronDown, UserPlus, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -172,6 +172,14 @@ export function SiteHeader() {
                       {getDashboardLabel()}
                     </Link>
                   </DropdownMenuItem>
+                  {session.user.userType === "customer" && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/activity-logs" className="cursor-pointer">
+                        <ScrollText className="h-4 w-4" />
+                        Activity Logs
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleSignOut}
@@ -231,6 +239,14 @@ export function SiteHeader() {
                     {getDashboardLabel()}
                   </Link>
                 </DropdownMenuItem>
+                {session.user.userType === "customer" && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard/activity-logs" className="cursor-pointer">
+                      <ScrollText className="h-4 w-4" />
+                      Activity Logs
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleSignOut}
@@ -320,6 +336,17 @@ export function SiteHeader() {
                         {getDashboardLabel()}
                       </Link>
                     </SheetClose>
+                    {session.user.userType === "customer" && (
+                      <SheetClose asChild>
+                        <Link
+                          href="/dashboard/activity-logs"
+                          className="flex items-center gap-2 rounded-md px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-primary/5 hover:text-primary"
+                        >
+                          <ScrollText className="h-4 w-4" />
+                          Activity Logs
+                        </Link>
+                      </SheetClose>
+                    )}
 
                     <button
                       onClick={() => {

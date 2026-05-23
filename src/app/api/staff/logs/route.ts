@@ -5,10 +5,10 @@ import { Prisma } from "@prisma/client";
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/admin/logs — list activity logs with filters
+// GET /api/staff/logs — list activity logs for the current staff member
 export async function GET(req: NextRequest) {
   try {
-    const admin = await requireAuth(["admin"]);
+    const staff = await requireAuth(["staff"]);
 
     const { searchParams } = req.nextUrl;
     const category = searchParams.get("category") || "all";
@@ -21,21 +21,8 @@ export async function GET(req: NextRequest) {
 
     const conditions: Prisma.ActivityLogWhereInput[] = [
       { isArchived: false },
+      { actorId: staff.id },
     ];
-
-    // Role-based filtering
-    if (admin.role === "super_admin") {
-      // Super admin sees ALL logs — no actor filter needed
-    } else {
-      // Regular admin: see staff, customer, system logs + their own admin logs
-      conditions.push({
-        OR: [
-          { actorType: { in: ["staff", "customer"] } },
-          { actorType: "admin", actorId: admin.id },
-          { actorType: "system" },
-        ],
-      });
-    }
 
     if (category !== "all") {
       conditions.push({ category });
@@ -49,7 +36,6 @@ export async function GET(req: NextRequest) {
       conditions.push({
         OR: [
           { actorName: { contains: search } },
-          { actorEmail: { contains: search } },
           { action: { contains: search } },
           { targetName: { contains: search } },
           { details: { contains: search } },
@@ -101,7 +87,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.message === "NEXT_REDIRECT") {
       throw error;
     }
-    console.error("Error fetching activity logs:", error);
+    console.error("Error fetching staff activity logs:", error);
     return NextResponse.json(
       { error: "Failed to fetch activity logs" },
       { status: 500 }

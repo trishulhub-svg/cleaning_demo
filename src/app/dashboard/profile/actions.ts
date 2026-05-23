@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { hashPassword, verifyPassword } from '@/lib/auth-helpers'
+import { logAuthActivity } from '@/lib/activity-logger'
 
 export async function updateCustomerProfile(_prevState: { success: boolean; error: string; message: string } | null, formData: FormData) {
   const userId = formData.get('userId') as string
@@ -22,6 +23,7 @@ export async function updateCustomerProfile(_prevState: { success: boolean; erro
         address: address?.trim() || null,
       },
     })
+    logAuthActivity('profile_updated', { userType: 'customer', id: parseInt(userId, 10), name: name.trim(), email: '' }).catch(() => {})
     return { success: true, error: '', message: 'Profile updated successfully.' }
   } catch (err) {
     console.error('[CustomerProfile] Update error:', err)
@@ -61,6 +63,7 @@ export async function changeCustomerPassword(_prevState: { success: boolean; err
       where: { id: parseInt(userId, 10) },
       data: { password: hashed },
     })
+    logAuthActivity('password_changed', { userType: 'customer', id: parseInt(userId, 10), name: user.name, email: user.email || '' }).catch(() => {})
     return { success: true, error: '', message: 'Password changed successfully.' }
   } catch (err) {
     console.error('[CustomerProfile] Password change error:', err)

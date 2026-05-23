@@ -53,9 +53,39 @@ export async function getAuthSession(): Promise<CustomSession | null> {
   }
 }
 
+// ============ Session Inactivity ============
+
+// Cookie maxAge: 2 hours of inactivity. The cookie gets re-set on each
+// authenticated page load (sliding window). JWT itself has a 30-day exp
+// as a hard ceiling — the cookie is the inactivity gate.
+const SESSION_INACTIVITY_SECONDS = 2 * 60 * 60 // 2 hours
+
+/**
+ * Re-issue the session cookie to reset the inactivity timer.
+ * Called inside requireAuth so every authenticated page/view extends the session.
+ * Fire-and-forget — errors are swallowed.
+ */
+async function refreshSessionCookie(token: string): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    const isProduction = process.env.NODE_ENV === 'production'
+    cookieStore.set('next-auth.session-token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_INACTIVITY_SECONDS,
+    })
+  } catch {
+    // Swallow — non-critical
+  }
+}
+
 /**
  * Require the user to be authenticated. Redirects to /login if not.
  * Optionally restrict to specific user types.
+ *
+ * Side-effect: re-sets the session cookie (sliding inactivity window).
  */
 export async function requireAuth(
   allowedTypes?: UserType[]
@@ -66,18 +96,44 @@ export async function requireAuth(
   role: string
   userType: UserType
 } | never> {
-  const session = await getAuthSession()
+  const cookieStore = await cookies()
+  const token = cookieStore.get('next-auth.session-token')?.value
+    || cookieStore.get('__Secure-next-auth.session-token')?.value
 
-  if (!session?.user) {
+  if (!token) {
+    redirect('/login')
+  }
+
+  const secret = process.env.NEXTAUTH_SECRET
+  if (!secret) {
+    redirect('/login')
+  }
+
+  let decoded: Record<string, unknown>
+  try {
+    decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as Record<string, unknown>
+  } catch {
+    redirect('/login')
+  }
+
+  const id = typeof decoded.id === 'number' ? decoded.id
+    : typeof decoded.sub === 'string' ? parseInt(decoded.sub, 10)
+    : null
+  const name = typeof decoded.name === 'string' ? decoded.name : null
+  const email = typeof decoded.email === 'string' ? decoded.email : null
+  const role = typeof decoded.role === 'string' ? decoded.role : null
+  const userType = typeof decoded.userType === 'string' ? decoded.userType as UserType : null
+
+  if (!id || !name || !email || !userType) {
     redirect('/login')
   }
 
   const user = {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-    role: session.user.role,
-    userType: session.user.userType,
+    id,
+    name,
+    email,
+    role: role || '',
+    userType,
   }
 
   if (
@@ -87,6 +143,9 @@ export async function requireAuth(
   ) {
     redirect('/unauthorized')
   }
+
+  // Re-set cookie to extend inactivity window (fire-and-forget)
+  refreshSessionCookie(token)
 
   return user
 }

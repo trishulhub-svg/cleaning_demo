@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { APP_NAME } from "@/lib/constants";
+import { logPaymentActivity } from "@/lib/activity-logger";
 
 // ============ Stripe Instance ============
 
@@ -190,6 +191,8 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     where: { bookingId: booking.id },
     data: { status: "assigned" },
   });
+
+  logPaymentActivity('payment_completed_stripe', null, booking.id, `Booking #${booking.id}`, { amount, sessionId: session.id }).catch(() => {})
 
   // Send confirmation email
   const customerEmail = booking.user?.email || booking.guestEmail;
