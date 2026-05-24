@@ -28,6 +28,7 @@ export async function getAuthSession(): Promise<CustomSession | null> {
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('next-auth.session-token')?.value
+      || cookieStore.get('__Secure-next-auth.session-token')?.value
     if (!token) return null
 
     const secret = process.env.NEXTAUTH_SECRET

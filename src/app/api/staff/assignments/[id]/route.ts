@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { generateCompletionCode } from "@/lib/qr-generator";
 import { CURRENCY } from "@/lib/constants";
 
+// Prevent Vercel from caching this route
+export const dynamic = "force-dynamic";
+
 // ============ GET /api/staff/assignments/[id] ============
 // Fetch a single assignment with full booking details for the current staff member.
 export async function GET(
