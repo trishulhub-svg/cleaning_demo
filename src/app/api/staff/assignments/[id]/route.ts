@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-helpers";
 import { db } from "@/lib/db";
-import { generateCompletionCode } from "@/lib/qr-generator";
+import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
 import { CURRENCY } from "@/lib/constants";
 
 // Prevent Vercel from caching this route
@@ -149,8 +149,14 @@ export async function PUT(
         );
       }
 
-      // Generate QR code
+      // Generate QR code + QR image
       const qrCode = generateCompletionCode();
+      let qrImageData: string | null = null;
+      try {
+        qrImageData = await generateQRImage(qrCode);
+      } catch (err) {
+        console.error("[API] Failed to generate QR image:", err);
+      }
 
       await db.$transaction([
         // Update assignment
@@ -160,6 +166,7 @@ export async function PUT(
             status: "in_progress",
             startedAt: new Date(),
             qrCode,
+            qrImageData,
           },
         }),
         // Update booking
@@ -168,6 +175,7 @@ export async function PUT(
           data: {
             bookingStatus: "confirmed",
             qrCompletionCode: qrCode,
+            qrImageData,
             updatedAt: new Date(),
           },
         }),
