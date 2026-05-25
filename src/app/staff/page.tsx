@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import {
   CalendarCheck,
   Clock,
@@ -15,6 +16,7 @@ import {
   Briefcase,
   Timer,
   Loader2,
+  QrCode,
 } from "lucide-react";
 import {
   Card,
@@ -122,8 +124,10 @@ const formatTime = (time: string) => {
 
 function ActionButton({
   assignment,
+  onActionSuccess,
 }: {
   assignment: Assignment;
+  onActionSuccess: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -131,24 +135,39 @@ function ActionButton({
   const handleStart = () => {
     startTransition(async () => {
       const { startAssignment } = await import("./actions");
-      await startAssignment(assignment.id);
-      router.refresh();
+      const result = await startAssignment(assignment.id);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess(); // Re-fetch dashboard data
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
   const handleComplete = () => {
     startTransition(async () => {
       const { completeAssignment } = await import("./actions");
-      await completeAssignment(assignment.id);
-      router.refresh();
+      const result = await completeAssignment(assignment.id);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess();
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
   const handleConfirmCash = () => {
     startTransition(async () => {
       const { confirmCashPayment } = await import("./actions");
-      await confirmCashPayment(assignment.bookingId);
-      router.refresh();
+      const result = await confirmCashPayment(assignment.bookingId);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess();
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
@@ -217,8 +236,10 @@ function ActionButton({
 
 function TableActionButton({
   assignment,
+  onActionSuccess,
 }: {
   assignment: Assignment;
+  onActionSuccess: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -226,24 +247,39 @@ function TableActionButton({
   const handleStart = () => {
     startTransition(async () => {
       const { startAssignment } = await import("./actions");
-      await startAssignment(assignment.id);
-      router.refresh();
+      const result = await startAssignment(assignment.id);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess();
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
   const handleComplete = () => {
     startTransition(async () => {
       const { completeAssignment } = await import("./actions");
-      await completeAssignment(assignment.id);
-      router.refresh();
+      const result = await completeAssignment(assignment.id);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess();
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
   const handleConfirmCash = () => {
     startTransition(async () => {
       const { confirmCashPayment } = await import("./actions");
-      await confirmCashPayment(assignment.bookingId);
-      router.refresh();
+      const result = await confirmCashPayment(assignment.bookingId);
+      if (result.success) {
+        toast.success(result.message);
+        onActionSuccess();
+      } else {
+        toast.error(result.message);
+      }
     });
   };
 
@@ -406,35 +442,41 @@ export default function StaffDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch("/api/staff/dashboard");
-        if (!res.ok) {
-          // Handle 401/403 — redirect to login
-          if (res.status === 401 || res.status === 403) {
-            window.location.href = "/login";
-            return;
-          }
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.message || `Request failed (${res.status})`);
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/staff/dashboard");
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = "/login";
+          return;
         }
-        const json: DashboardData = await res.json();
-        if (!json.success) {
-          throw new Error(json.message || "Unexpected response");
-        }
-        setData(json);
-      } catch (err) {
-        console.error("[StaffDashboard] fetch error:", err);
-        setError(
-          err instanceof Error ? err.message : "Something went wrong."
-        );
-      } finally {
-        setLoading(false);
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || `Request failed (${res.status})`);
       }
+      const json: DashboardData = await res.json();
+      if (!json.success) {
+        throw new Error(json.message || "Unexpected response");
+      }
+      setData(json);
+      setError(null);
+    } catch (err) {
+      console.error("[StaffDashboard] fetch error:", err);
+      setError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    } finally {
+      setLoading(false);
     }
-    fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  // Refetch callback passed to action buttons
+  const handleActionSuccess = useCallback(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -624,9 +666,29 @@ export default function StaffDashboardPage() {
                       </Badge>
                     </div>
 
+                    {/* QR indicator */}
+                    {(assignment.status === "in_progress" || assignment.status === "cash_pending") && assignment.qrCode && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2 border-green-300 text-green-700 hover:bg-green-50"
+                        onClick={() => {
+                          const win = window.open(`/staff/booking-details/${assignment.id}`, '_blank');
+                          if (win) win.focus();
+                        }}
+                      >
+                        <QrCode className="h-3.5 w-3.5 mr-1" />
+                        QR
+                      </Button>
+                    )}
+
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <ActionButton assignment={assignment} />
+                      <ActionButton
+                        assignment={assignment}
+                        onActionSuccess={handleActionSuccess}
+                      />
                     </div>
                   </div>
                 );
@@ -734,7 +796,27 @@ export default function StaffDashboardPage() {
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <TableActionButton assignment={assignment} />
+                          <div className="flex items-center justify-end gap-1">
+                            {(assignment.status === "in_progress" || assignment.status === "cash_pending") && assignment.qrCode && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-green-700 hover:text-green-800 hover:bg-green-50"
+                                onClick={() => {
+                                  const win = window.open(`/staff/booking-details/${assignment.id}`, '_blank');
+                                  if (win) win.focus();
+                                }}
+                              >
+                                <QrCode className="h-3.5 w-3.5 mr-0.5" />
+                                QR
+                              </Button>
+                            )}
+                            <TableActionButton
+                              assignment={assignment}
+                              onActionSuccess={handleActionSuccess}
+                            />
+                          </div>
                         </td>
                       </tr>
                     );
