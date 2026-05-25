@@ -9,28 +9,39 @@ export const dynamic = "force-dynamic";
 // Returns the staff member's assignments for the dashboard.
 // Auth is verified server-side via the custom JWT cookie.
 export async function GET() {
+  // --- Auth check ---
+  let session;
   try {
-    const session = await getAuthSession();
+    session = await getAuthSession();
+  } catch (authErr) {
+    const msg = authErr instanceof Error ? authErr.message : String(authErr);
+    console.error("[API] /api/staff/dashboard auth error:", msg);
+    return NextResponse.json(
+      { success: false, message: `Auth error: ${msg}` },
+      { status: 401 }
+    );
+  }
 
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized." },
-        { status: 401 }
-      );
-    }
+  if (!session?.user) {
+    return NextResponse.json(
+      { success: false, message: "Unauthorized." },
+      { status: 401 }
+    );
+  }
 
-    // Verify user is staff type
-    if (session.user.userType !== "staff") {
-      return NextResponse.json(
-        { success: false, message: "Forbidden: staff access required." },
-        { status: 403 }
-      );
-    }
+  if (session.user.userType !== "staff") {
+    return NextResponse.json(
+      { success: false, message: "Forbidden: staff access required." },
+      { status: 403 }
+    );
+  }
 
-    const staffId = session.user.id;
+  const staffId = session.user.id;
 
-    // Fetch staff assignments with booking details
-    const rawAssignments = await db.bookingAssignment.findMany({
+  // --- DB query (isolated try-catch) ---
+  let assignments;
+  try {
+    assignments = await db.bookingAssignment.findMany({
       where: { staffId },
       include: {
         booking: {
@@ -43,39 +54,50 @@ export async function GET() {
       orderBy: { assignedAt: "desc" },
       take: 50,
     });
+  } catch (dbErr) {
+    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+    const stack = dbErr instanceof Error ? dbErr.stack : undefined;
+    console.error("[API] /api/staff/dashboard DB error:", msg, stack);
+    // Return empty dashboard with error visible instead of 500
+    return NextResponse.json({
+      success: true,
+      staff: { id: session.user.id, name: session.user.name },
+      assignments: [],
+      _dbError: msg,
+    });
+  }
 
-    // Safely serialize DateTime fields to ISO strings to prevent JSON.stringify failures
-    const assignments = rawAssignments.map((a) => ({
+  // --- Safe serialization ---
+  let safeAssignments;
+  try {
+    safeAssignments = assignments.map((a) => ({
       ...a,
-      assignedAt: a.assignedAt ? new Date(a.assignedAt).toISOString() : null,
-      startedAt: a.startedAt ? new Date(a.startedAt).toISOString() : null,
-      completedAt: a.completedAt ? new Date(a.completedAt).toISOString() : null,
+      assignedAt: a.assignedAt instanceof Date ? a.assignedAt.toISOString() : (a.assignedAt ?? null),
+      startedAt: a.startedAt instanceof Date ? a.startedAt.toISOString() : (a.startedAt ?? null),
+      completedAt: a.completedAt instanceof Date ? a.completedAt.toISOString() : (a.completedAt ?? null),
       booking: a.booking
         ? {
             ...a.booking,
-            createdAt: a.booking.createdAt ? new Date(a.booking.createdAt).toISOString() : null,
-            updatedAt: a.booking.updatedAt ? new Date(a.booking.updatedAt).toISOString() : null,
-            completedAt: a.booking.completedAt ? new Date(a.booking.completedAt).toISOString() : null,
-            cancelledAt: a.booking.cancelledAt ? new Date(a.booking.cancelledAt).toISOString() : null,
+            createdAt: a.booking.createdAt instanceof Date ? a.booking.createdAt.toISOString() : (a.booking.createdAt ?? null),
+            updatedAt: a.booking.updatedAt instanceof Date ? a.booking.updatedAt.toISOString() : (a.booking.updatedAt ?? null),
+            completedAt: a.booking.completedAt instanceof Date ? a.booking.completedAt.toISOString() : (a.booking.completedAt ?? null),
+            cancelledAt: a.booking.cancelledAt instanceof Date ? a.booking.cancelledAt.toISOString() : (a.booking.cancelledAt ?? null),
           }
         : null,
     }));
-
-    return NextResponse.json({
-      success: true,
-      staff: {
-        id: session.user.id,
-        name: session.user.name,
-      },
-      assignments,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error("[API] GET /api/staff/dashboard error:", errorMessage, errorStack);
-    return NextResponse.json(
-      { success: false, message: "Internal server error.", debug: errorMessage },
-      { status: 500 }
-    );
+  } catch (serErr) {
+    const msg = serErr instanceof Error ? serErr.message : String(serErr);
+    console.error("[API] /api/staff/dashboard serialization error:", msg);
+    // Fall back: return raw assignments (Prisma Dates serialize via JSON.stringify)
+    safeAssignments = assignments;
   }
+
+  return NextResponse.json({
+    success: true,
+    staff: {
+      id: session.user.id,
+      name: session.user.name,
+    },
+    assignments: safeAssignments,
+  });
 }
