@@ -3,6 +3,7 @@ import { CURRENCY, APP_NAME } from "@/lib/constants";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
+import { refreshSessionCookie } from "@/lib/auth-helpers";
 import {
   CheckCircle2,
   CalendarDays,
@@ -37,6 +38,18 @@ type PageProps = {
 
 export default async function PaymentSuccessPage({ searchParams }: PageProps) {
   const params = await searchParams;
+
+  // Refresh session cookie so the user doesn't get logged out after Stripe redirect
+  // (they may have spent several minutes on the Stripe checkout page)
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const token = cookieStore.get("next-auth.session-token")?.value
+      || cookieStore.get("__Secure-next-auth.session-token")?.value;
+    if (token) {
+      await refreshSessionCookie(token);
+    }
+  } catch { /* non-critical */ }
 
   // Determine which ID we have
   const sessionId = params.session_id;

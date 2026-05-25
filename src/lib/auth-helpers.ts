@@ -56,17 +56,19 @@ export async function getAuthSession(): Promise<CustomSession | null> {
 
 // ============ Session Inactivity ============
 
-// Cookie maxAge: 5 minutes of inactivity. The cookie gets re-set on each
+// Cookie maxAge: 30 minutes of inactivity. The cookie gets re-set on each
 // authenticated page load (sliding window). JWT itself has a 30-day exp
 // as a hard ceiling — the cookie is the inactivity gate.
-const SESSION_INACTIVITY_SECONDS = 5 * 60 // 5 minutes
+// NOTE: Was 5 minutes but caused issues during Stripe checkout redirect
+// (customer gets logged out while filling in card details).
+const SESSION_INACTIVITY_SECONDS = 30 * 60 // 30 minutes
 
 /**
  * Re-issue the session cookie to reset the inactivity timer.
  * Called inside requireAuth so every authenticated page/view extends the session.
  * Fire-and-forget — errors are swallowed.
  */
-async function refreshSessionCookie(token: string): Promise<void> {
+export async function refreshSessionCookie(token: string): Promise<void> {
   try {
     const cookieStore = await cookies()
     const isProduction = process.env.NODE_ENV === 'production'

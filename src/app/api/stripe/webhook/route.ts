@@ -149,6 +149,16 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
       where: { id: booking.id },
       data: { invoiceId: invoice.id },
     });
+
+    // Create invoice item
+    await db.invoiceItem.create({
+      data: {
+        invoiceId: invoice.id,
+        bookingId: booking.id,
+        serviceName: booking.service.name,
+        amount,
+      },
+    });
   } else {
     // Update existing invoice
     await db.invoice.update({
@@ -294,11 +304,63 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     });
 
     if (booking && booking.paymentStatus !== "paid") {
-      // The checkout.session.completed should handle the full flow
-      // This is a safety net
+      // Safety net: update booking to paid if checkout.session.completed missed it
       console.log(
         `[Stripe Webhook] Payment intent fallback: updating booking ${bookingId}`
       );
+
+      const amount = (paymentIntent.amount ?? 0) / 100;
+      const invoiceNumber = `INV-${Date.now()}-${String(booking.id).padStart(5, "0")}`;
+
+      // Create invoice if not exists
+      let invoiceId = booking.invoiceId;
+      if (!invoiceId) {
+        const invoice = await db.invoice.create({
+          data: {
+            userId: booking.userId ?? 0,
+            bookingId: booking.id,
+            invoiceNumber,
+            totalAmount: amount,
+            paymentMethod: "stripe",
+            paymentStatus: "paid",
+          },
+        });
+        invoiceId = invoice.id;
+        await db.booking.update({
+          where: { id: booking.id },
+          data: { invoiceId: invoice.id },
+        });
+      } else {
+        await db.invoice.update({
+          where: { id: invoiceId },
+          data: { paymentStatus: "paid" },
+        });
+      }
+
+      // Create payment record
+      await db.payment.create({
+        data: {
+          userId: booking.userId ?? 0,
+          bookingId: booking.id,
+          invoiceId: invoiceId!,
+          amount,
+          paymentMethod: "stripe",
+          transactionId: paymentIntent.id,
+          paymentStatus: "completed",
+          paidAt: new Date(),
+        },
+      });
+
+      // Update booking status
+      await db.booking.update({
+        where: { id: booking.id },
+        data: {
+          paymentStatus: "paid",
+          bookingStatus: "confirmed",
+          paymentMethod: "stripe",
+          updatedAt: new Date(),
+        },
+      });
     }
   }
 }

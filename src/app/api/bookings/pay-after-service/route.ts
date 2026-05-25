@@ -75,6 +75,16 @@ export async function POST(request: NextRequest) {
         data: { invoiceId: invoice.id },
       });
 
+      // Create invoice item
+      await db.invoiceItem.create({
+        data: {
+          invoiceId: invoice.id,
+          bookingId: booking.id,
+          serviceName: booking.service.name,
+          amount: booking.totalPrice,
+        },
+      });
+
       // Create payment record
       await db.payment.create({
         data: {
