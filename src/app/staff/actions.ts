@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
-import { CURRENCY } from "@/lib/constants";
+import { CURRENCY, SITE_URL } from "@/lib/constants";
 import { logBookingActivity, logPaymentActivity } from "@/lib/activity-logger";
 
 // ============ Types ============
@@ -66,12 +66,14 @@ export async function startAssignment(
       return { success: false, message: "This booking has been cancelled." };
     }
 
-    // Generate QR completion code + actual scannable QR image
+    // Generate QR completion code + scannable QR image (encodes full URL
+    // so customer phone camera opens the verification page directly)
     const qrCode = generateCompletionCode();
+    const qrUrl = `${SITE_URL}/public/scan-qr?code=${qrCode}`;
     // Generate QR code image
     let qrImageData: string | null = null;
     try {
-      qrImageData = await generateQRImage(qrCode);
+      qrImageData = await generateQRImage(qrUrl);
     } catch (err) {
       console.error("[Staff] Failed to generate QR image:", err);
     }

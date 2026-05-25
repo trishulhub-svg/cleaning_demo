@@ -86,6 +86,15 @@ export default function PublicScanQrPage() {
           setState("already_completed");
           return;
         }
+        // If user is not logged in, redirect to login with callback
+        if (data.needsLogin) {
+          setState("error");
+          setErrorMessage("You need to be logged in to verify a QR code. Redirecting to login...");
+          setTimeout(() => {
+            window.location.href = `/login?callbackUrl=/public/scan-qr%3Fcode%3D${encodeURIComponent(qrCode)}`;
+          }, 1500);
+          return;
+        }
         setState("error");
         setErrorMessage(data.error || "Something went wrong. Please try again.");
         return;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-helpers";
 import { db } from "@/lib/db";
 import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
-import { CURRENCY } from "@/lib/constants";
+import { CURRENCY, SITE_URL } from "@/lib/constants";
 
 // Prevent Vercel from caching this route
 export const dynamic = "force-dynamic";
@@ -149,11 +149,13 @@ export async function PUT(
         );
       }
 
-      // Generate QR code + QR image
+      // Generate QR code (text) + scannable QR image (encodes the full URL
+      // so customer phone camera opens the verification page directly)
       const qrCode = generateCompletionCode();
+      const qrUrl = `${SITE_URL}/public/scan-qr?code=${qrCode}`;
       let qrImageData: string | null = null;
       try {
-        qrImageData = await generateQRImage(qrCode);
+        qrImageData = await generateQRImage(qrUrl);
       } catch (err) {
         console.error("[API] Failed to generate QR image:", err);
       }

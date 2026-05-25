@@ -8,7 +8,18 @@ import { logBookingActivity } from "@/lib/activity-logger";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { code } = body;
+    let { code } = body;
+
+    // ── Extract code from URL if a full URL was scanned ──
+    // When QR encodes a URL like https://domain.com/public/scan-qr?code=QR-XXXX,
+    // the phone camera opens the URL directly, but the scan page may also
+    // receive the raw decoded text. Handle both cases.
+    if (code && typeof code === "string") {
+      const urlMatch = code.match(/[?&]code=(QR-\d{8}-[A-F0-9]{10})/);
+      if (urlMatch) {
+        code = urlMatch[1];
+      }
+    }
 
     // ── Validate code format ──
     if (!code || typeof code !== "string" || !validateCode(code)) {
@@ -29,7 +40,9 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Find assignment by QR code ──
-    const assignment = await db.bookingAssignment.findUnique({
+    // NOTE: qrCode is NOT a @unique field in the schema, so we must
+    // use findFirst. findUnique requires @id or @unique constraints.
+    const assignment = await db.bookingAssignment.findFirst({
       where: { qrCode: code },
       include: {
         booking: {
