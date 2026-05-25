@@ -68,3 +68,4 @@ upload/
 .z-ai-config
 .claude
 worklog.md
+.session-credentials.md

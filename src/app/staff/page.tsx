@@ -417,18 +417,11 @@ export default function StaffDashboardPage() {
             return;
           }
           const body = await res.json().catch(() => null);
-          // Include debug info in error message for visibility
-          const debugInfo = body?.debug ? ` [Debug: ${body.debug}]` : '';
-          throw new Error(body?.message || `Request failed (${res.status})${debugInfo}`);
+          throw new Error(body?.message || `Request failed (${res.status})`);
         }
-        const json = await res.json() as DashboardData & { _dbError?: string };
+        const json: DashboardData = await res.json();
         if (!json.success) {
           throw new Error(json.message || "Unexpected response");
-        }
-        // If the API returned data but flagged a DB error, show it as a warning
-        if (json._dbError) {
-          console.warn("[StaffDashboard] DB returned with warning:", json._dbError);
-          setError(`Dashboard loaded with limited data. Server reported: ${json._dbError}`);
         }
         setData(json);
       } catch (err) {
@@ -447,7 +440,7 @@ export default function StaffDashboardPage() {
     return <DashboardSkeleton />;
   }
 
-  if (error && !data) {
+  if (error) {
     return <ErrorState message={error} />;
   }
 
@@ -480,14 +473,6 @@ export default function StaffDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Warning banner if there was a partial error */}
-      {error && data && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">
-          <p className="font-medium">Warning</p>
-          <p>{error}</p>
-        </div>
-      )}
-
       {/* Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
