@@ -135,7 +135,6 @@ export async function POST(req: NextRequest) {
           data: {
             status: "completed",
             completedAt: now,
-            qrScannedAt: now,
           },
         }),
         db.booking.update({
@@ -207,8 +206,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[QR-Scan] Error processing QR scan:", error);
+    const message =
+      error instanceof Error ? error.message : "An unexpected error occurred.";
+    const devDetails =
+      error instanceof Error ? error.stack : String(error);
     return NextResponse.json(
-      { success: false, error: "An unexpected error occurred. Please try again." },
+      {
+        success: false,
+        error: "An unexpected error occurred. Please try again.",
+        code: "SERVER_ERROR",
+        debug: { message, details: devDetails },
+      },
       { status: 500 }
     );
   }

@@ -111,11 +111,25 @@ export function showApiError(options: {
       (obj.message as string) ||
       (obj.detail as string) ||
       message;
-    // Include full response for debugging
-    try {
-      details = JSON.stringify(obj, null, 2);
-    } catch {
-      details = String(obj);
+
+    // If the response includes a debug object, surface it prominently
+    if (obj.debug && typeof obj.debug === "object") {
+      const debug = obj.debug as Record<string, unknown>;
+      const debugMsg = (debug.message as string) || "";
+      const debugDetails = (debug.details as string) || "";
+      if (debugMsg && debugMsg !== message) {
+        message = `${message} [${debugMsg}]`;
+      }
+      details = debugDetails || JSON.stringify(debug, null, 2);
+    }
+
+    // Fallback: include full response for debugging
+    if (!details) {
+      try {
+        details = JSON.stringify(obj, null, 2);
+      } catch {
+        details = String(obj);
+      }
     }
   }
 

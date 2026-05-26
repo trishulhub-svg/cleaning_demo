@@ -80,6 +80,7 @@ export default function ScanQrPage() {
   const [manualCode, setManualCode] = React.useState('')
   const scannerRef = React.useRef<HTMLDivElement>(null)
   const html5QrRef = React.useRef<any>(null)
+  const scanHandledRef = React.useRef(false) // Guard against multiple scan callbacks
 
   // Cleanup scanner on unmount
   React.useEffect(() => {
@@ -96,9 +97,15 @@ export default function ScanQrPage() {
 
   // ============ Camera Scanner ============
 
-  const stopCamera = React.useCallback(() => {
+  const stopCamera = React.useCallback(async () => {
     if (html5QrRef.current) {
-      html5QrRef.current.stop().catch(() => {})
+      try {
+        await html5QrRef.current.stop()
+      } catch {}
+      try {
+        html5QrRef.current.clear()
+      } catch {}
+      html5QrRef.current = null
     }
     setIsScanning(false)
   }, [])
@@ -108,6 +115,7 @@ export default function ScanQrPage() {
     setIsScanning(true)
     setScanResult(null)
     setPaymentChoice(null)
+    scanHandledRef.current = false // Reset guard for new scan session
 
     try {
       const { Html5Qrcode } = await import('html5-qrcode')
@@ -126,10 +134,18 @@ export default function ScanQrPage() {
       await html5QrRef.current.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText: string) => {
-          // On successful scan: stop camera immediately and process
-          html5QrRef.current?.stop().catch(() => {})
+        async (decodedText: string) => {
+          // Guard: only process the first detection per scan session
+          if (scanHandledRef.current) return
+          scanHandledRef.current = true
+
+          // Stop camera fully before processing
+          try {
+            await html5QrRef.current?.stop()
+          } catch {}
+          html5QrRef.current = null
           setIsScanning(false)
+          setMode('result')
           handleScanResult(decodedText)
         },
         () => {} // Ignore errors during scanning
@@ -153,10 +169,6 @@ export default function ScanQrPage() {
     setIsProcessing(true)
     setScanResult(null)
     setPaymentChoice(null)
-    // Switch from camera to result mode so scanner card disappears
-    if (mode === 'camera') {
-      setMode('result')
-    }
 
     try {
       const res = await fetch('/api/public/qr-scan', {
@@ -263,12 +275,13 @@ export default function ScanQrPage() {
 
   // ============ Reset ============
 
-  const resetScan = () => {
-    stopCamera()
+  const resetScan = async () => {
+    await stopCamera()
     setScanResult(null)
     setPaymentChoice(null)
     setMode('menu')
     setManualCode('')
+    scanHandledRef.current = false
   }
 
   // ============ Render ============
