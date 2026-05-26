@@ -239,7 +239,7 @@ function BookingsPageInner() {
   const [total, setTotal] = useState(0);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("pending");
   const [dateFilter, setDateFilter] = useState("all");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -526,7 +526,7 @@ function BookingsPageInner() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
-                placeholder="Search by name, email, or booking ID..."
+                placeholder="Search by name, email, booking #, or invoice #..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -709,7 +709,7 @@ function BookingsPageInner() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {booking.assignedStaff ? (
+                          {booking.assignedStaff && booking.bookingStatus !== 'completed' && booking.bookingStatus !== 'cancelled' ? (
                             <Button
                               size="sm"
                               variant="ghost"

@@ -130,7 +130,7 @@ type DashboardClientProps = {
   refunds: Refund[]
 }
 
-type BookingFilter = 'all' | 'pending' | 'completed'
+type BookingFilter = 'pending' | 'completed' | 'cancelled' | 'all'
 
 // ============ Helpers ============
 
@@ -270,7 +270,7 @@ export default function DashboardClient({
 
   // State
   const [activeTab, setActiveTab] = React.useState('bookings')
-  const [filter, setFilter] = React.useState<BookingFilter>('all')
+  const [filter, setFilter] = React.useState<BookingFilter>('pending')
   const [search, setSearch] = React.useState('')
   const [bookings, setBookings] = React.useState<Booking[]>(initialBookings)
   const [refunds, setRefunds] = React.useState<Refund[]>(initialRefunds)
@@ -309,7 +309,11 @@ export default function DashboardClient({
         )
       } else if (filter === 'completed') {
         result = result.filter(
-          (b) => b.bookingStatus === 'completed' || b.bookingStatus === 'cancelled'
+          (b) => b.bookingStatus === 'completed'
+        )
+      } else if (filter === 'cancelled') {
+        result = result.filter(
+          (b) => b.bookingStatus === 'cancelled'
         )
       }
     }
@@ -358,6 +362,7 @@ export default function DashboardClient({
   function handleBookingAction() {
     // Refresh data after cancel/reschedule
     router.refresh()
+    setTimeout(() => window.location.reload(), 500)
   }
 
   async function handleProfileUpdate(e: React.FormEvent) {
@@ -518,6 +523,7 @@ export default function DashboardClient({
                             <SelectItem value="all">All Bookings</SelectItem>
                             <SelectItem value="pending">Pending</SelectItem>
                             <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

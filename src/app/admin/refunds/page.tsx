@@ -75,7 +75,7 @@ export default function RefundsPage() {
   const [actionModal, setActionModal] = useState<{
     open: boolean;
     refundId: number;
-    action: "approve" | "reject" | "complete";
+    action: "approve" | "reject";
     refundAmount: number;
     customerName: string;
   }>({ open: false, refundId: 0, action: "approve", refundAmount: 0, customerName: "" });
@@ -305,23 +305,10 @@ export default function RefundsPage() {
                               </Button>
                             </>
                           )}
-                          {refund.status === "approved" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setActionModal({
-                                  open: true,
-                                  refundId: refund.id,
-                                  action: "complete",
-                                  refundAmount: refund.amount,
-                                  customerName: getCustomerName(refund),
-                                })
-                              }
-                              className="h-7 gap-1 text-xs"
-                            >
-                              Mark Complete
-                            </Button>
+                          {refund.status === "processing" && (
+                            <Badge variant="outline" className="text-xs text-purple-600 bg-purple-50 border-purple-200">
+                              Processing via Stripe
+                            </Badge>
                           )}
                         </div>
                       </TableCell>
@@ -346,15 +333,12 @@ export default function RefundsPage() {
             <DialogTitle>
               {actionModal.action === "approve" && "Approve Refund"}
               {actionModal.action === "reject" && "Reject Refund"}
-              {actionModal.action === "complete" && "Complete Refund"}
             </DialogTitle>
             <DialogDescription>
               {actionModal.action === "approve" &&
-                `You are about to approve a refund of ${CURRENCY}${actionModal.refundAmount.toFixed(2)} for ${actionModal.customerName}.`}
+                `You are about to approve a refund of ${CURRENCY}${actionModal.refundAmount.toFixed(2)} for ${actionModal.customerName}. A Stripe refund will be initiated automatically.`}
               {actionModal.action === "reject" &&
                 `You are about to reject the refund request of ${CURRENCY}${actionModal.refundAmount.toFixed(2)} from ${actionModal.customerName}.`}
-              {actionModal.action === "complete" &&
-                `Mark this refund of ${CURRENCY}${actionModal.refundAmount.toFixed(2)} as completed.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -399,10 +383,8 @@ export default function RefundsPage() {
               {actionLoading
                 ? "Processing..."
                 : actionModal.action === "approve"
-                  ? "Approve Refund"
-                  : actionModal.action === "reject"
-                    ? "Reject Refund"
-                    : "Mark Complete"}
+                  ? "Approve & Refund via Stripe"
+                  : "Reject Refund"}
             </Button>
           </DialogFooter>
         </DialogContent>

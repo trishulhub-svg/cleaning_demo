@@ -211,7 +211,7 @@ export function CancelBookingModal({
           <div className="rounded-lg border border-muted bg-muted/20 p-3">
             <div className="flex items-center gap-2 text-sm">
               <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">Time until booking:</span>
+              <span className="text-muted-foreground">Time left for service:</span>
               <span className="font-semibold text-foreground">{timeRemaining}</span>
             </div>
           </div>
@@ -250,6 +250,21 @@ export function CancelBookingModal({
           </div>
 
           {/* Clear 24-hour Warning */}
+          {refund.diffHours > 0 && refund.diffHours <= 24 ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-xs text-destructive font-medium">
+                  Cancellations within 24 hours of the service require admin assistance.
+                </p>
+                <p className="text-xs text-destructive font-medium">
+                  Please contact admin to cancel this booking.
+                </p>
+              </div>
+            </div>
+          </div>
+          ) : (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
@@ -259,6 +274,7 @@ export function CancelBookingModal({
               </p>
             </div>
           </div>
+          )}
 
           {/* Reason */}
           <div className="space-y-2">
@@ -287,10 +303,10 @@ export function CancelBookingModal({
             <Button
               type="submit"
               variant="destructive"
-              disabled={isSubmitting || !reason.trim()}
+              disabled={isSubmitting || !reason.trim() || (refund.diffHours > 0 && refund.diffHours <= 24)}
             >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Confirm Cancellation
+              {refund.diffHours > 0 && refund.diffHours <= 24 ? 'Please Contact Admin to Cancel' : 'Confirm Cancellation'}
             </Button>
           </DialogFooter>
         </form>

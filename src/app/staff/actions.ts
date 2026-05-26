@@ -6,7 +6,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
 import { CURRENCY, SITE_URL } from "@/lib/constants";
 import { logBookingActivity, logPaymentActivity } from "@/lib/activity-logger";
-import { sendBookingCompletionEmail } from "@/lib/email";
+import { sendBookingCompletionEmail, sendPaymentReceipt } from "@/lib/email";
 
 // ============ Types ============
 
@@ -421,6 +421,21 @@ export async function confirmCashPayment(
         date: booking.bookingDate,
       }).catch((err) => {
         console.error("[Staff] Failed to send completion email:", err);
+      });
+    }
+
+    // ── Send payment receipt email for cash payment ──
+    if (customerEmail && invoiceId) {
+      const invoice = await db.invoice.findUnique({ where: { id: invoiceId } });
+      sendPaymentReceipt(customerEmail, customerName, {
+        invoiceNumber: invoice?.invoiceNumber || `INV-${booking.id}`,
+        date: now.toLocaleDateString(),
+        amount: booking.totalPrice,
+        paymentMethod: "Cash",
+        transactionId,
+        items: [{ serviceName: booking.service.name, amount: booking.totalPrice }],
+      }).catch((err) => {
+        console.error("[Staff] Failed to send receipt email:", err);
       });
     }
 

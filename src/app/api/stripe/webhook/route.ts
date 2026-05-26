@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, sendRefundEmail, sendPaymentReceipt } from "@/lib/email";
 import { APP_NAME } from "@/lib/constants";
 import { logPaymentActivity } from "@/lib/activity-logger";
 
@@ -68,6 +68,10 @@ export async function POST(request: NextRequest) {
       }
       case "payment_intent.payment_failed": {
         await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
+      }
+      case "charge.refund.updated": {
+        await handleChargeRefundUpdated(event.data.object as Stripe.Charge, event.data.object.refunds as unknown as Stripe.ApiList<Stripe.Refund>);
         break;
       }
       default:
@@ -245,6 +249,21 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
       });
     }
 
+    // Send payment receipt for post-service card payment
+    if (customerEmail && invoiceId) {
+      const invoice = await db.invoice.findUnique({ where: { id: invoiceId } });
+      sendPaymentReceipt(customerEmail, customerName, {
+        invoiceNumber: invoice?.invoiceNumber || `INV-${booking.id}`,
+        date: new Date().toLocaleDateString(),
+        amount: amount,
+        paymentMethod: "Card (Stripe)",
+        transactionId: session.id,
+        items: [{ serviceName: booking.service.name, amount }],
+      }).catch((err) => {
+        console.error("[Stripe Webhook] Failed to send receipt email:", err);
+      });
+    }
+
     // Also log the completion
     const { logBookingActivity } = await import("@/lib/activity-logger");
     logBookingActivity(
@@ -379,5 +398,93 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     console.log(
       `[Stripe Webhook] Payment failed for booking ${bookingId}`
     );
+  }
+}
+
+/**
+ * Handle charge refund updated event.
+ * Updates the Refund record status based on the Stripe refund status.
+ * When Stripe confirms refund (status = "succeeded"), update to "completed".
+ */
+async function handleChargeRefundUpdated(charge: Stripe.Charge, refunds: Stripe.ApiList<Stripe.Refund>) {
+  console.log(`[Stripe Webhook] Charge refund updated for charge: ${charge.id}`);
+
+  try {
+    // Get the most recent refund
+    const refundsList = Array.isArray(refunds) ? refunds : (refunds?.data || []);
+    if (refundsList.length === 0) return;
+
+    const latestRefund = refundsList[0];
+    const refundId = latestRefund.metadata?.refundId;
+
+    if (!refundId) {
+      console.log("[Stripe Webhook] No refundId in refund metadata, skipping");
+      return;
+    }
+
+    // Find our refund record
+    const refund = await db.refund.findUnique({
+      where: { id: Number(refundId) },
+      include: {
+        booking: {
+          select: {
+            id: true,
+            user: { select: { name: true, email: true } },
+            guestName: true,
+            guestEmail: true,
+          },
+        },
+      },
+    });
+
+    if (!refund) {
+      console.log(`[Stripe Webhook] Refund ${refundId} not found in DB`);
+      return;
+    }
+
+    // Map Stripe refund status to our status
+    const statusMap: Record<string, string> = {
+      pending: "processing",
+      succeeded: "completed",
+      failed: "rejected",
+      canceled: "rejected",
+    };
+
+    const newStatus = statusMap[latestRefund.status];
+    if (!newStatus || refund.status === newStatus) {
+      console.log(`[Stripe Webhook] Refund ${refundId} status already ${refund.status}, no update needed`);
+      return;
+    }
+
+    // Update refund status
+    await db.refund.update({
+      where: { id: Number(refundId) },
+      data: {
+        status: newStatus,
+        stripeRefundId: latestRefund.id,
+        processedAt: newStatus === "completed" ? new Date() : refund.processedAt,
+      },
+    });
+
+    console.log(`[Stripe Webhook] Updated refund ${refundId} status: ${refund.status} → ${newStatus}`);
+
+    // Send email notification on completion
+    if (newStatus === "completed") {
+      const customerEmail = refund.booking?.user?.email || refund.booking?.guestEmail;
+      const customerName = refund.booking?.user?.name || refund.booking?.guestName || "Customer";
+
+      if (customerEmail) {
+        sendRefundEmail(customerEmail, customerName, {
+          refundId: refund.id,
+          amount: refund.amount,
+          reason: refund.reason,
+          status: "completed",
+        }).catch((err) => {
+          console.error("[Stripe Webhook] Failed to send refund completion email:", err);
+        });
+      }
+    }
+  } catch (error) {
+    console.error("[Stripe Webhook] Error handling charge.refund.updated:", error);
   }
 }

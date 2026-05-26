@@ -32,13 +32,18 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
+      // Check if search term is numeric (for booking ID lookup)
+      const isNumeric = !isNaN(Number(search));
+
       where.OR = [
         { user: { name: { contains: search } } },
         { user: { email: { contains: search } } },
         { guestName: { contains: search } },
         { guestEmail: { contains: search } },
-        { id: isNaN(Number(search)) ? undefined : { equals: Number(search) } },
-      ].filter(Boolean);
+        ...(isNumeric ? [{ id: { equals: Number(search) } }] : []),
+        // Search by invoice number via invoice relation
+        { invoice: { invoiceNumber: { contains: search } } },
+      ];
     }
 
     const [bookings, total, statusCounts] = await Promise.all([
@@ -52,6 +57,7 @@ export async function GET(req: NextRequest) {
           user: { select: { name: true, email: true, phone: true } },
           assignedStaff: { select: { id: true, name: true, phone: true } },
           assignment: true,
+          invoice: { select: { invoiceNumber: true } },
         },
       }),
       db.booking.count({ where }),

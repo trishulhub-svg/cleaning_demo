@@ -173,6 +173,14 @@ export async function cancelBooking(
       return { success: false, message: 'This booking cannot be cancelled.' }
     }
 
+    // Check if less than 24 hours before the service — only admin can cancel
+    const bookingDateTime = new Date(`${booking.bookingDate}T${booking.bookingTime}`)
+    const diffMs = bookingDateTime.getTime() - Date.now()
+    const diffHours = diffMs / (1000 * 60 * 60)
+    if (diffHours > 0 && diffHours <= 24) {
+      return { success: false, message: 'Less than 24 hours before the service. Please contact admin to cancel this booking.' }
+    }
+
     // Calculate refund
     const refundPercent = getRefundPercentage(booking.bookingDate, booking.bookingTime)
     const refundAmount = (booking.totalPrice * refundPercent) / 100
