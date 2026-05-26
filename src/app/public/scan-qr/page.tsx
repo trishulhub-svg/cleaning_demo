@@ -31,6 +31,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CURRENCY, APP_NAME } from "@/lib/constants";
+import { showApiError } from "@/lib/error-store";
 
 // ============ Types ============
 
@@ -86,6 +87,16 @@ export default function PublicScanQrPage() {
           setState("already_completed");
           return;
         }
+        // Show actual backend error in the error dialog
+        showApiError({
+          title: data.code === "WRONG_CUSTOMER" ? "Not Your Booking"
+            : data.code === "BOOKING_CANCELLED" ? "Booking Cancelled"
+            : data.code === "NOT_ACTIVE" ? "Not Active"
+            : data.code === "NEEDS_LOGIN" ? "Login Required"
+            : "QR Code Error",
+          error: data,
+          context: `QR Scan: ${qrCode}`,
+        });
         setState("error");
         setErrorMessage(data.error || "Something went wrong. Please try again.");
         return;
@@ -101,7 +112,12 @@ export default function PublicScanQrPage() {
         setBooking(data.booking);
         setBookingId(data.booking.id);
       }
-    } catch {
+    } catch (err) {
+      showApiError({
+        title: "QR Scan Failed",
+        error: err,
+        context: `QR Scan: ${qrCode}`,
+      });
       setState("error");
       setErrorMessage("Network error. Please check your connection and try again.");
     }

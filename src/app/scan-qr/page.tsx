@@ -35,6 +35,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { CURRENCY } from '@/lib/constants'
+import { showApiError } from '@/lib/error-store'
 
 // ============ Types ============
 
@@ -70,7 +71,7 @@ type PaymentChoice = {
 
 export default function ScanQrPage() {
   const router = useRouter()
-  const [mode, setMode] = React.useState<'menu' | 'camera' | 'manual'>('menu')
+  const [mode, setMode] = React.useState<'menu' | 'camera' | 'manual' | 'result'>('menu')
   const [qrInput, setQrInput] = React.useState('')
   const [isScanning, setIsScanning] = React.useState(false)
   const [scanResult, setScanResult] = React.useState<ScanResult | null>(null)
@@ -94,6 +95,13 @@ export default function ScanQrPage() {
   }, [])
 
   // ============ Camera Scanner ============
+
+  const stopCamera = React.useCallback(() => {
+    if (html5QrRef.current) {
+      html5QrRef.current.stop().catch(() => {})
+    }
+    setIsScanning(false)
+  }, [])
 
   const startCameraScanner = async () => {
     setMode('camera')
@@ -119,11 +127,10 @@ export default function ScanQrPage() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText: string) => {
-          // On successful scan
-          handleScanResult(decodedText)
-          // Stop scanner after successful scan
+          // On successful scan: stop camera immediately and process
           html5QrRef.current?.stop().catch(() => {})
           setIsScanning(false)
+          handleScanResult(decodedText)
         },
         () => {} // Ignore errors during scanning
       )
@@ -135,11 +142,8 @@ export default function ScanQrPage() {
     }
   }
 
-  const stopCamera = () => {
-    if (html5QrRef.current) {
-      html5QrRef.current.stop().catch(() => {})
-    }
-    setIsScanning(false)
+  const handleStopCamera = () => {
+    stopCamera()
     setMode('menu')
   }
 
@@ -149,6 +153,10 @@ export default function ScanQrPage() {
     setIsProcessing(true)
     setScanResult(null)
     setPaymentChoice(null)
+    // Switch from camera to result mode so scanner card disappears
+    if (mode === 'camera') {
+      setMode('result')
+    }
 
     try {
       const res = await fetch('/api/public/qr-scan', {
@@ -156,17 +164,45 @@ export default function ScanQrPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       })
+
       const data: ScanResult = await res.json()
       setScanResult(data)
 
-      if (data.needsLogin) {
-        toast.error('Please log in to scan QR codes.')
-        setTimeout(() => {
-          window.location.href = '/login?callbackUrl=/scan-qr'
-        }, 1500)
+      if (!res.ok || !data.success) {
+        // Show the actual backend error in the error dialog
+        showApiError({
+          title: data.code === 'ALREADY_COMPLETED' ? 'Already Completed'
+            : data.code === 'WRONG_CUSTOMER' ? 'Not Your Booking'
+            : data.code === 'BOOKING_CANCELLED' ? 'Booking Cancelled'
+            : data.code === 'NOT_ACTIVE' ? 'Not Active'
+            : data.code === 'NEEDS_LOGIN' ? 'Login Required'
+            : 'QR Code Error',
+          error: data,
+          context: `QR Scan: ${code}`,
+        })
+
+        if (data.needsLogin) {
+          setTimeout(() => {
+            window.location.href = '/login?callbackUrl=/scan-qr'
+          }, 1500)
+        }
+        return
       }
-    } catch {
-      toast.error('Failed to process QR code. Please try again.')
+
+      if (data.autoCompleted) {
+        toast.success('Service completed successfully!')
+      }
+    } catch (err) {
+      // Network error or parsing error — show in error dialog
+      showApiError({
+        title: 'QR Scan Failed',
+        error: err,
+        context: `QR Scan: ${code}`,
+      })
+      setScanResult({
+        success: false,
+        error: 'Failed to process QR code. Please try again.',
+      })
     } finally {
       setIsProcessing(false)
     }
@@ -180,6 +216,7 @@ export default function ScanQrPage() {
       toast.error('Please enter a QR code.')
       return
     }
+    setMode('result')
     await handleScanResult(manualCode.trim())
   }
 
@@ -198,14 +235,27 @@ export default function ScanQrPage() {
       const data: PaymentChoice = await res.json()
       setPaymentChoice(data)
 
-      if (data.success && data.method === 'online' && data.redirectUrl) {
+      if (!res.ok || !data.success) {
+        showApiError({
+          title: 'Payment Error',
+          error: data,
+          context: `Payment choice: ${method}, Booking #${scanResult.booking.id}`,
+        })
+        return
+      }
+
+      if (data.method === 'online' && data.redirectUrl) {
         toast.success('Redirecting to payment...')
         setTimeout(() => {
           window.location.href = data.redirectUrl!
         }, 1000)
       }
-    } catch {
-      toast.error('Failed to process payment choice.')
+    } catch (err) {
+      showApiError({
+        title: 'Payment Error',
+        error: err,
+        context: `Payment choice: ${method}, Booking #${scanResult?.booking?.id}`,
+      })
     } finally {
       setIsProcessing(false)
     }
@@ -214,14 +264,11 @@ export default function ScanQrPage() {
   // ============ Reset ============
 
   const resetScan = () => {
+    stopCamera()
     setScanResult(null)
     setPaymentChoice(null)
     setMode('menu')
     setManualCode('')
-    if (html5QrRef.current) {
-      html5QrRef.current.stop().catch(() => {})
-    }
-    setIsScanning(false)
   }
 
   // ============ Render ============
@@ -283,7 +330,7 @@ export default function ScanQrPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Scanning...</CardTitle>
-              <Button variant="ghost" size="icon" onClick={stopCamera}>
+              <Button variant="ghost" size="icon" onClick={handleStopCamera}>
                 <X className="h-4 w-4" />
               </Button>
             </CardHeader>
@@ -299,7 +346,7 @@ export default function ScanQrPage() {
               </p>
             </CardContent>
             <CardFooter className="flex justify-center gap-2">
-              <Button variant="outline" onClick={stopCamera}>
+              <Button variant="outline" onClick={handleStopCamera}>
                 Cancel
               </Button>
               <Button variant="outline" onClick={() => { stopCamera(); setMode('manual') }}>
@@ -351,7 +398,7 @@ export default function ScanQrPage() {
         )}
 
         {/* ===== PROCESSING ===== */}
-        {isProcessing && mode !== 'camera' && (
+        {isProcessing && (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -360,233 +407,244 @@ export default function ScanQrPage() {
           </Card>
         )}
 
-        {/* ===== ERROR RESULT ===== */}
-        {scanResult && !scanResult.success && (
-          <Card className="border-red-200">
-            <CardContent className="py-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                  <AlertTriangle className="h-8 w-8 text-red-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {scanResult.code === 'ALREADY_COMPLETED' ? 'Already Completed' :
-                   scanResult.code === 'WRONG_CUSTOMER' ? 'Not Your Booking' :
-                   scanResult.code === 'BOOKING_CANCELLED' ? 'Booking Cancelled' :
-                   scanResult.code === 'NOT_ACTIVE' ? 'Not Active' :
-                   'QR Code Error'}
-                </h3>
-                <p className="text-sm text-gray-500 max-w-md mb-6">
-                  {scanResult.error}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={resetScan}>
-                    Try Again
-                  </Button>
-                  <Button variant="ghost" asChild>
-                    <Link href="/dashboard">
-                      <ArrowLeft className="h-4 w-4 mr-1" />
-                      Dashboard
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* ===== RESULT CARDS (only show in 'result' mode) ===== */}
+        {mode === 'result' && !isProcessing && (
+          <>
+            {/* ERROR RESULT */}
+            {scanResult && !scanResult.success && (
+              <Card className="border-red-200">
+                <CardContent className="py-8">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                      <AlertTriangle className="h-8 w-8 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      {scanResult.code === 'ALREADY_COMPLETED' ? 'Already Completed' :
+                       scanResult.code === 'WRONG_CUSTOMER' ? 'Not Your Booking' :
+                       scanResult.code === 'BOOKING_CANCELLED' ? 'Booking Cancelled' :
+                       scanResult.code === 'NOT_ACTIVE' ? 'Not Active' :
+                       'QR Code Error'}
+                    </h3>
+                    <p className="text-sm text-gray-500 max-w-md mb-6">
+                      {scanResult.error}
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-6">
+                      Full error details are available in the error dialog above.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={resetScan}>
+                        Try Again
+                      </Button>
+                      <Button variant="ghost" asChild>
+                        <Link href="/dashboard">
+                          <ArrowLeft className="h-4 w-4 mr-1" />
+                          Dashboard
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* ===== SUCCESS: Auto-completed (paid booking) ===== */}
-        {scanResult?.success && scanResult.autoCompleted && (
-          <Card className="border-emerald-200 bg-emerald-50/50">
-            <CardContent className="py-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="h-8 w-8 text-emerald-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-emerald-800 mb-2">
-                  Service Completed!
-                </h3>
-                <p className="text-sm text-emerald-600 max-w-md mb-6">
-                  Your cleaning service has been verified and marked as completed. Thank you for choosing GreenLeaf Cleaning Services!
-                </p>
-                <Button asChild>
-                  <Link href="/dashboard">
-                    Back to Dashboard
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            {/* SUCCESS: Auto-completed (paid booking) */}
+            {scanResult?.success && scanResult.autoCompleted && (
+              <Card className="border-emerald-200 bg-emerald-50/50">
+                <CardContent className="py-8">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                      <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-emerald-800 mb-2">
+                      Service Completed!
+                    </h3>
+                    <p className="text-sm text-emerald-600 max-w-md mb-6">
+                      Your cleaning service has been verified and marked as completed. Thank you for choosing GreenLeaf Cleaning Services!
+                    </p>
+                    <Button asChild>
+                      <Link href="/dashboard">
+                        Back to Dashboard
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* ===== SUCCESS: Requires payment choice ===== */}
-        {scanResult?.success && scanResult.requiresPayment && !paymentChoice && scanResult.booking && (
-          <div className="space-y-4">
-            {/* Booking Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  QR Code Verified
-                </CardTitle>
-                <CardDescription>
-                  Please choose how you would like to pay for this service.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2 text-sm">
-                    <div className="flex items-start gap-2">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-muted-foreground">Service</p>
-                        <p className="font-medium">{scanResult.booking.service}</p>
+            {/* SUCCESS: Requires payment choice */}
+            {scanResult?.success && scanResult.requiresPayment && !paymentChoice && scanResult.booking && (
+              <div className="space-y-4">
+                {/* Booking Details */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                      QR Code Verified
+                    </CardTitle>
+                    <CardDescription>
+                      Please choose how you would like to pay for this service.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-lg bg-muted/30 p-4 space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2 text-sm">
+                        <div className="flex items-start gap-2">
+                          <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-muted-foreground">Service</p>
+                            <p className="font-medium">{scanResult.booking.service}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-muted-foreground">Date & Time</p>
+                            <p className="font-medium">{scanResult.booking.date} at {scanResult.booking.time}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2 sm:col-span-2">
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-muted-foreground">Address</p>
+                            <p className="font-medium">{scanResult.booking.address}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <CreditCard className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-muted-foreground">Total Amount</p>
+                            <p className="text-lg font-bold text-green-700">
+                              {CURRENCY}{scanResult.booking.totalPrice.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-muted-foreground">Date & Time</p>
-                        <p className="font-medium">{scanResult.booking.date} at {scanResult.booking.time}</p>
+                  </CardContent>
+                </Card>
+
+                {/* Payment Options */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Choose Payment Method</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button
+                      className="w-full justify-start h-auto py-4 px-4 gap-4"
+                      variant="outline"
+                      onClick={() => handlePaymentChoice('cash')}
+                      disabled={isProcessing}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                        <Banknote className="h-5 w-5 text-orange-600" />
                       </div>
-                    </div>
-                    <div className="flex items-start gap-2 sm:col-span-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-muted-foreground">Address</p>
-                        <p className="font-medium">{scanResult.booking.address}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <CreditCard className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-muted-foreground">Total Amount</p>
-                        <p className="text-lg font-bold text-green-700">
-                          {CURRENCY}{scanResult.booking.totalPrice.toFixed(2)}
+                      <div className="text-left">
+                        <p className="font-semibold text-gray-900">Hand Over Cash to Cleaner</p>
+                        <p className="text-xs text-muted-foreground">
+                          Pay {CURRENCY}{scanResult.booking.totalPrice.toFixed(2)} in cash directly to the cleaning staff.
+                          They will confirm receipt to complete the booking.
                         </p>
                       </div>
+                    </Button>
+
+                    <Separator />
+
+                    <Button
+                      className="w-full justify-start h-auto py-4 px-4 gap-4"
+                      variant="outline"
+                      onClick={() => handlePaymentChoice('online')}
+                      disabled={isProcessing}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <CreditCard className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold text-gray-900">Pay by Card Online</p>
+                        <p className="text-xs text-muted-foreground">
+                          Pay securely online via card. The booking will be completed after payment.
+                        </p>
+                      </div>
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-center">
+                  <Button variant="ghost" onClick={resetScan} disabled={isProcessing}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* PAYMENT CHOICE RESULT: Cash */}
+            {paymentChoice?.success && paymentChoice.method === 'cash' && (
+              <Card className="border-orange-200 bg-orange-50/50">
+                <CardContent className="py-8">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="h-16 w-16 rounded-full bg-orange-100 flex items-center justify-center mb-4">
+                      <Banknote className="h-8 w-8 text-orange-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Cash Payment Selected
+                    </h3>
+                    <p className="text-sm text-gray-600 max-w-md mb-4">
+                      {paymentChoice.message}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-6">
+                      <ShieldCheck className="h-4 w-4 text-green-600" />
+                      The cleaner will confirm receipt from their portal to finalize the booking.
+                    </div>
+                    <Button asChild>
+                      <Link href="/dashboard">
+                        Back to Dashboard
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* PAYMENT CHOICE RESULT: Online (redirecting) */}
+            {paymentChoice?.success && paymentChoice.method === 'online' && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                  <p className="text-sm text-muted-foreground">Redirecting to secure payment...</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* PAYMENT CHOICE ERROR */}
+            {paymentChoice && !paymentChoice.success && (
+              <Card className="border-red-200">
+                <CardContent className="py-8">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                      <AlertTriangle className="h-8 w-8 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Error</h3>
+                    <p className="text-sm text-gray-500 max-w-md mb-6">
+                      {paymentChoice.error}
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-6">
+                      Full error details are available in the error dialog above.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setPaymentChoice(null)}>
+                        Try Again
+                      </Button>
+                      <Button variant="ghost" asChild>
+                        <Link href="/dashboard">
+                          <ArrowLeft className="h-4 w-4 mr-1" />
+                          Dashboard
+                        </Link>
+                      </Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Payment Options */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Choose Payment Method</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button
-                  className="w-full justify-start h-auto py-4 px-4 gap-4"
-                  variant="outline"
-                  onClick={() => handlePaymentChoice('cash')}
-                  disabled={isProcessing}
-                >
-                  <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                    <Banknote className="h-5 w-5 text-orange-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-semibold text-gray-900">Hand Over Cash to Cleaner</p>
-                    <p className="text-xs text-muted-foreground">
-                      Pay {CURRENCY}{scanResult.booking.totalPrice.toFixed(2)} in cash directly to the cleaning staff.
-                      They will confirm receipt to complete the booking.
-                    </p>
-                  </div>
-                </Button>
-
-                <Separator />
-
-                <Button
-                  className="w-full justify-start h-auto py-4 px-4 gap-4"
-                  variant="outline"
-                  onClick={() => handlePaymentChoice('online')}
-                  disabled={isProcessing}
-                >
-                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-semibold text-gray-900">Pay by Card Online</p>
-                    <p className="text-xs text-muted-foreground">
-                      Pay securely online via card. The booking will be completed after payment.
-                    </p>
-                  </div>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <div className="flex justify-center">
-              <Button variant="ghost" onClick={resetScan} disabled={isProcessing}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* ===== PAYMENT CHOICE RESULT: Cash ===== */}
-        {paymentChoice?.success && paymentChoice.method === 'cash' && (
-          <Card className="border-orange-200 bg-orange-50/50">
-            <CardContent className="py-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-full bg-orange-100 flex items-center justify-center mb-4">
-                  <Banknote className="h-8 w-8 text-orange-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Cash Payment Selected
-                </h3>
-                <p className="text-sm text-gray-600 max-w-md mb-4">
-                  {paymentChoice.message}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-6">
-                  <ShieldCheck className="h-4 w-4 text-green-600" />
-                  The cleaner will confirm receipt from their portal to finalize the booking.
-                </div>
-                <Button asChild>
-                  <Link href="/dashboard">
-                    Back to Dashboard
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ===== PAYMENT CHOICE RESULT: Online (redirecting) ===== */}
-        {paymentChoice?.success && paymentChoice.method === 'online' && (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-              <p className="text-sm text-muted-foreground">Redirecting to secure payment...</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ===== PAYMENT CHOICE ERROR ===== */}
-        {paymentChoice && !paymentChoice.success && (
-          <Card className="border-red-200">
-            <CardContent className="py-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                  <AlertTriangle className="h-8 w-8 text-red-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Error</h3>
-                <p className="text-sm text-gray-500 max-w-md mb-6">
-                  {paymentChoice.error}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setPaymentChoice(null)}>
-                    Try Again
-                  </Button>
-                  <Button variant="ghost" asChild>
-                    <Link href="/dashboard">
-                      <ArrowLeft className="h-4 w-4 mr-1" />
-                      Dashboard
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </div>
