@@ -86,15 +86,6 @@ export default function PublicScanQrPage() {
           setState("already_completed");
           return;
         }
-        // If user is not logged in, redirect to login with callback
-        if (data.needsLogin) {
-          setState("error");
-          setErrorMessage("You need to be logged in to verify a QR code. Redirecting to login...");
-          setTimeout(() => {
-            window.location.href = `/login?callbackUrl=/public/scan-qr%3Fcode%3D${encodeURIComponent(qrCode)}`;
-          }, 1500);
-          return;
-        }
         setState("error");
         setErrorMessage(data.error || "Something went wrong. Please try again.");
         return;
@@ -254,9 +245,15 @@ export default function PublicScanQrPage() {
               <Button
                 className="w-full bg-green-600 hover:bg-green-700 text-white h-12 text-sm font-semibold"
                 onClick={() => {
-                  router.push(
-                    `/public/complete-booking?bookingId=${booking.id}`
-                  );
+                  const params = new URLSearchParams();
+                  params.set("bookingId", String(booking.id));
+                  params.set("service", booking.service);
+                  params.set("date", booking.date);
+                  params.set("time", booking.time);
+                  params.set("address", booking.address);
+                  params.set("totalPrice", String(booking.totalPrice));
+                  params.set("customerName", booking.customerName);
+                  router.push(`/public/complete-booking?${params.toString()}`);
                 }}
               >
                 <CreditCard className="h-4 w-4 mr-2" />

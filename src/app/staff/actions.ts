@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { generateCompletionCode, generateQRImage } from "@/lib/qr-generator";
 import { CURRENCY, SITE_URL } from "@/lib/constants";
 import { logBookingActivity, logPaymentActivity } from "@/lib/activity-logger";
+import { sendBookingCompletionEmail } from "@/lib/email";
 
 // ============ Types ============
 
@@ -66,8 +67,7 @@ export async function startAssignment(
       return { success: false, message: "This booking has been cancelled." };
     }
 
-    // Generate QR completion code + scannable QR image (encodes full URL
-    // so customer phone camera opens the verification page directly)
+    // Generate QR completion code + scannable QR image (encodes full URL)
     const qrCode = generateCompletionCode();
     const qrUrl = `${SITE_URL}/public/scan-qr?code=${qrCode}`;
     // Generate QR code image
@@ -297,6 +297,7 @@ export async function confirmCashPayment(
       include: {
         assignment: { select: { id: true, staffId: true, status: true } },
         service: { select: { name: true } },
+        user: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -409,6 +410,20 @@ export async function confirmCashPayment(
     revalidatePath(`/staff/booking-details/${booking.assignment?.id}`);
     logBookingActivity('cash_payment_confirmed', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, bookingId, `Booking #${bookingId}`, { amount: booking.totalPrice }).catch(() => {})
     logPaymentActivity('cash_payment_received', { userType: 'staff', id: staff.id, name: staff.name, email: staff.email || '' }, bookingId, `Booking #${bookingId}`, { amount: booking.totalPrice }).catch(() => {})
+
+    // ── Send service completion email to customer ──
+    const customerEmail = booking.user?.email || booking.guestEmail;
+    const customerName = booking.user?.name || booking.guestName || "Customer";
+    if (customerEmail) {
+      sendBookingCompletionEmail(customerEmail, customerName, {
+        bookingId: booking.id,
+        serviceName: booking.service.name,
+        date: booking.bookingDate,
+      }).catch((err) => {
+        console.error("[Staff] Failed to send completion email:", err);
+      });
+    }
+
     return {
       success: true,
       message: `Cash payment of ${CURRENCY}${booking.totalPrice.toFixed(2)} confirmed!`,

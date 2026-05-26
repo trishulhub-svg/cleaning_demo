@@ -149,16 +149,6 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
       where: { id: booking.id },
       data: { invoiceId: invoice.id },
     });
-
-    // Create invoice item
-    await db.invoiceItem.create({
-      data: {
-        invoiceId: invoice.id,
-        bookingId: booking.id,
-        serviceName: booking.service.name,
-        amount,
-      },
-    });
   } else {
     // Update existing invoice
     await db.invoice.update({
@@ -185,29 +175,91 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     },
   });
 
+  // ── Check if service has already started BEFORE updating booking ──
+  // This happens when a customer pays via Stripe AFTER scanning QR (pay-after-service → chose online).
+  // In that case, the service is already done and we should COMPLETE the booking, not just confirm it.
+  const activeAssignment = await db.bookingAssignment.findFirst({
+    where: {
+      bookingId: booking.id,
+      status: { in: ["in_progress", "cash_pending"] },
+    },
+  });
+
+  const isPostServicePayment = !!activeAssignment;
+  const newBookingStatus = isPostServicePayment ? "completed" : "confirmed";
+  const now = new Date();
+
   // Update booking status
   await db.booking.update({
     where: { id: booking.id },
     data: {
       paymentStatus: "paid",
-      bookingStatus: "confirmed",
+      bookingStatus: newBookingStatus,
       paymentMethod: "stripe",
-      updatedAt: new Date(),
+      ...(isPostServicePayment ? {
+        completedAt: now,
+        completedBy: "Customer (Online)",
+        qrScannedAt: now,
+      } : {}),
+      updatedAt: now,
     },
   });
 
-  // Update assignment status if exists
+  // Update assignment status only if still in "assigned" state (don't reset in_progress!)
   await db.bookingAssignment.updateMany({
-    where: { bookingId: booking.id },
+    where: {
+      bookingId: booking.id,
+      status: "assigned",
+    },
     data: { status: "assigned" },
   });
 
-  logPaymentActivity('payment_completed_stripe', null, booking.id, `Booking #${booking.id}`, { amount, sessionId: session.id }).catch(() => {})
+  // If this is a post-service payment, also complete the assignment
+  if (isPostServicePayment) {
+    await db.bookingAssignment.update({
+      where: { id: activeAssignment.id },
+      data: {
+        status: "completed",
+        completedAt: now,
+      },
+    });
+  }
+
+  logPaymentActivity('payment_completed_stripe', null, booking.id, `Booking #${booking.id}`, { amount, sessionId: session.id, isPostServicePayment }).catch(() => {})
 
   // Send confirmation email
   const customerEmail = booking.user?.email || booking.guestEmail;
   const customerName = booking.user?.name || booking.guestName || "Customer";
 
+  if (isPostServicePayment) {
+    // ── Post-service payment: send SERVICE COMPLETION email ──
+    // The service was already done; customer just paid afterwards.
+    const { sendBookingCompletionEmail } = await import("@/lib/email");
+    if (customerEmail) {
+      await sendBookingCompletionEmail(customerEmail, customerName, {
+        bookingId: booking.id,
+        serviceName: booking.service.name,
+        date: booking.bookingDate,
+      }).catch((err) => {
+        console.error("[Stripe Webhook] Failed to send completion email:", err);
+      });
+    }
+
+    // Also log the completion
+    const { logBookingActivity } = await import("@/lib/activity-logger");
+    logBookingActivity(
+      "booking_completed_via_qr_online_payment",
+      null,
+      booking.id,
+      `Booking #${booking.id}`,
+      { paymentMethod: "stripe", sessionId: session.id }
+    ).catch(() => {});
+
+    console.log(`[Stripe Webhook] Booking ${bookingId} completed (post-service payment)`);
+    return;
+  }
+
+  // ── Pre-service payment (normal booking flow): send payment confirmation email ──
   if (customerEmail) {
     const emailHtml = `
       <!DOCTYPE html>
@@ -304,63 +356,11 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     });
 
     if (booking && booking.paymentStatus !== "paid") {
-      // Safety net: update booking to paid if checkout.session.completed missed it
+      // The checkout.session.completed should handle the full flow
+      // This is a safety net
       console.log(
         `[Stripe Webhook] Payment intent fallback: updating booking ${bookingId}`
       );
-
-      const amount = (paymentIntent.amount ?? 0) / 100;
-      const invoiceNumber = `INV-${Date.now()}-${String(booking.id).padStart(5, "0")}`;
-
-      // Create invoice if not exists
-      let invoiceId = booking.invoiceId;
-      if (!invoiceId) {
-        const invoice = await db.invoice.create({
-          data: {
-            userId: booking.userId ?? 0,
-            bookingId: booking.id,
-            invoiceNumber,
-            totalAmount: amount,
-            paymentMethod: "stripe",
-            paymentStatus: "paid",
-          },
-        });
-        invoiceId = invoice.id;
-        await db.booking.update({
-          where: { id: booking.id },
-          data: { invoiceId: invoice.id },
-        });
-      } else {
-        await db.invoice.update({
-          where: { id: invoiceId },
-          data: { paymentStatus: "paid" },
-        });
-      }
-
-      // Create payment record
-      await db.payment.create({
-        data: {
-          userId: booking.userId ?? 0,
-          bookingId: booking.id,
-          invoiceId: invoiceId!,
-          amount,
-          paymentMethod: "stripe",
-          transactionId: paymentIntent.id,
-          paymentStatus: "completed",
-          paidAt: new Date(),
-        },
-      });
-
-      // Update booking status
-      await db.booking.update({
-        where: { id: booking.id },
-        data: {
-          paymentStatus: "paid",
-          bookingStatus: "confirmed",
-          paymentMethod: "stripe",
-          updatedAt: new Date(),
-        },
-      });
     }
   }
 }

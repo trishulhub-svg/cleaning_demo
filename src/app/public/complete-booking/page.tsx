@@ -13,6 +13,9 @@ import {
   ArrowLeft,
   Leaf,
   Percent,
+  CalendarDays,
+  Clock,
+  MapPin,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +40,6 @@ interface BookingInfo {
   time: string;
   address: string;
   totalPrice: number;
-  paymentStatus: string;
   customerName: string;
 }
 
@@ -46,47 +48,35 @@ interface BookingInfo {
 export default function PublicCompleteBookingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const bookingIdParam = searchParams.get("bookingId");
 
-  const [loading, setLoading] = React.useState(true);
-  const [booking, setBooking] = React.useState<BookingInfo | null>(null);
+  // Read booking data from URL params (passed from scan-qr page)
+  const bookingIdParam = searchParams.get("bookingId");
+  const serviceParam = searchParams.get("service");
+  const dateParam = searchParams.get("date");
+  const timeParam = searchParams.get("time");
+  const addressParam = searchParams.get("address");
+  const totalPriceParam = searchParams.get("totalPrice");
+  const customerNameParam = searchParams.get("customerName");
+
+  // Parse booking data from URL params
+  const [booking, setBooking] = React.useState<BookingInfo | null>(() => {
+    if (bookingIdParam && totalPriceParam) {
+      return {
+        id: parseInt(bookingIdParam, 10),
+        service: serviceParam || "Cleaning Service",
+        date: dateParam || "",
+        time: timeParam || "",
+        address: addressParam || "",
+        totalPrice: parseFloat(totalPriceParam) || 0,
+        customerName: customerNameParam || "Customer",
+      };
+    }
+    return null;
+  });
+
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [completed, setCompleted] = React.useState(false);
-
-  // ── Fetch booking details ──
-  React.useEffect(() => {
-    if (!bookingIdParam) {
-      setError("No booking ID provided.");
-      setLoading(false);
-      return;
-    }
-
-    async function fetchBooking() {
-      try {
-        const res = await fetch("/api/public/qr-scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code: "", // We need a different approach - use complete-booking directly
-          }),
-        });
-        // The QR scan needs a code. Since we're coming from the QR scan flow,
-        // we'll just use the booking data we know.
-        // Actually, let's use the complete-booking API directly
-        // The booking data is already known from the QR scan page
-        // We'll pass it via URL search params or just redirect
-
-        // For now, show a simple payment selection based on the booking ID
-        setLoading(false);
-      } catch {
-        setError("Failed to load booking details.");
-        setLoading(false);
-      }
-    }
-
-    fetchBooking();
-  }, [bookingIdParam]);
 
   // ── Handle payment selection ──
   async function handlePaymentSelection(paymentMethod: "cash" | "stripe") {
@@ -114,7 +104,7 @@ export default function PublicCompleteBookingPage() {
 
       if (paymentMethod === "cash") {
         setCompleted(true);
-        toast.success("Cash payment selected. Pay your cleaner on site!");
+        toast.success("Cash payment selected. Please pay your cleaner on site!");
       } else if (paymentMethod === "stripe" && data.redirect) {
         // Redirect to checkout with booking data
         const params = new URLSearchParams();
@@ -128,20 +118,8 @@ export default function PublicCompleteBookingPage() {
     }
   }
 
-  // ── Render: Loading ──
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-4">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 text-green-600 animate-spin mx-auto" />
-          <p className="text-sm text-gray-500">Loading booking details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Render: Error ──
-  if (error && !completed) {
+  // ── Render: No booking data ──
+  if (!booking) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 py-8">
         <Card className="w-full max-w-md shadow-xl bg-white/95 backdrop-blur-sm">
@@ -149,8 +127,10 @@ export default function PublicCompleteBookingPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
               <CreditCard className="h-8 w-8 text-red-500" />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Something went wrong</h1>
-            <p className="text-sm text-gray-500">{error}</p>
+            <h1 className="text-xl font-bold text-gray-900">No Booking Found</h1>
+            <p className="text-sm text-gray-500">
+              Please scan the QR code again to access your booking.
+            </p>
             <Button variant="outline" asChild className="w-full">
               <Link href="/">Back to Home</Link>
             </Button>
@@ -172,7 +152,7 @@ export default function PublicCompleteBookingPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Cash Payment Selected</h1>
               <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                Please have the exact amount ready for your cleaner when they arrive.
+                Please have the exact amount ready for your cleaner.
                 Your booking will be confirmed as complete once payment is collected.
               </p>
             </div>
@@ -180,11 +160,12 @@ export default function PublicCompleteBookingPage() {
             <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-sm space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-green-700 font-medium">Booking ID</span>
-                <span className="text-green-800 font-bold">#{bookingIdParam}</span>
+                <span className="text-green-800 font-bold">#{booking.id}</span>
               </div>
-              <p className="text-green-600 text-xs text-center">
-                You can also view this booking from your dashboard.
-              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-green-700 font-medium">Amount Due</span>
+                <span className="text-green-800 font-bold">{CURRENCY}{booking.totalPrice.toFixed(2)}</span>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -222,9 +203,60 @@ export default function PublicCompleteBookingPage() {
         {/* Booking ID Badge */}
         <div className="flex justify-center">
           <Badge variant="outline" className="text-sm px-4 py-1">
-            Booking #{bookingIdParam}
+            Booking #{booking.id}
           </Badge>
         </div>
+
+        {/* Booking Summary */}
+        {booking.service && (
+          <div className="rounded-xl bg-gray-50 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <Leaf className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-gray-500">Service</p>
+                <p className="text-sm font-semibold text-gray-900">{booking.service}</p>
+              </div>
+            </div>
+            {(booking.date || booking.time) && (
+              <div className="grid grid-cols-2 gap-3">
+                {booking.date && (
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">Date</p>
+                      <p className="text-sm font-medium text-gray-900">{booking.date}</p>
+                    </div>
+                  </div>
+                )}
+                {booking.time && (
+                  <div className="flex items-start gap-2">
+                    <Clock className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">Time</p>
+                      <p className="text-sm font-medium text-gray-900">{booking.time}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {booking.address && (
+              <div className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-500">Address</p>
+                  <p className="text-sm font-medium text-gray-900">{booking.address}</p>
+                </div>
+              </div>
+            )}
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Total</span>
+              <span className="text-lg font-bold text-green-700">
+                {CURRENCY}{booking.totalPrice.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Payment Options */}
         <div className="space-y-4">
@@ -282,7 +314,7 @@ export default function PublicCompleteBookingPage() {
                 <div className="flex-1">
                   <CardTitle className="text-base">Pay Cash on Site</CardTitle>
                   <CardDescription className="text-xs">
-                    Pay your cleaner directly when they arrive
+                    Pay your cleaner directly when service is complete
                   </CardDescription>
                 </div>
               </div>

@@ -12,8 +12,7 @@ export async function POST(req: NextRequest) {
 
     // ── Extract code from URL if a full URL was scanned ──
     // When QR encodes a URL like https://domain.com/public/scan-qr?code=QR-XXXX,
-    // the phone camera opens the URL directly, but the scan page may also
-    // receive the raw decoded text. Handle both cases.
+    // the phone may send the full URL. We extract just the code part.
     if (code && typeof code === "string") {
       const urlMatch = code.match(/[?&]code=(QR-\d{8}-[A-F0-9]{10})/);
       if (urlMatch) {
@@ -120,9 +119,14 @@ export async function POST(req: NextRequest) {
 
     const booking = assignment.booking;
 
-    // ── Branch: prepaid vs cash/pending ──
-    if (booking.paymentStatus === "paid") {
-      // ── Auto-complete: update assignment and booking ──
+    // ── Branch: prepaid vs pay-after-service ──
+    // Use paymentMethod (set at booking creation) as the primary indicator.
+    // paymentMethod="stripe" means the customer booked with online pre-payment.
+    // paymentMethod="cash_on_service" means the customer booked to pay after service.
+    const isPrepaidBooking = booking.paymentMethod === "stripe";
+
+    if (isPrepaidBooking) {
+      // ── PRE-PAID: Auto-complete the service immediately ──
       const now = new Date();
 
       await db.$transaction([
@@ -131,6 +135,7 @@ export async function POST(req: NextRequest) {
           data: {
             status: "completed",
             completedAt: now,
+            qrScannedAt: now,
           },
         }),
         db.booking.update({
@@ -145,7 +150,7 @@ export async function POST(req: NextRequest) {
         }),
       ]);
 
-      // ── Send completion email ──
+      // ── Send service completion email ──
       const customerName = booking.user?.name || booking.guestName || "Customer";
       const customerEmail = booking.user?.email || booking.guestEmail;
       if (customerEmail) {
@@ -171,7 +176,7 @@ export async function POST(req: NextRequest) {
         sessionActor,
         booking.id,
         `Booking #${booking.id}`,
-        { qrCode: code, paymentStatus: booking.paymentStatus }
+        { qrCode: code, paymentMethod: booking.paymentMethod }
       );
 
       return NextResponse.json({
@@ -181,7 +186,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Cash / Pending: return booking data for payment selection ──
+    // ── PAY-AFTER-SERVICE: return booking data for payment selection ──
+    // Customer needs to choose cash or online payment before the service is marked complete.
     const bookingData = {
       id: booking.id,
       service: booking.service.name,
