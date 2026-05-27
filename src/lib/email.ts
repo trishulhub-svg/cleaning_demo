@@ -1,36 +1,34 @@
 import nodemailer from "nodemailer"
 import { APP_NAME, SITE_URL } from "@/lib/constants"
+import { getSetting } from "@/lib/settings"
 
 // ============ SMTP Transport Setup ============
 
 let transporter: nodemailer.Transporter | null = null
 
-function getTransporter(): nodemailer.Transporter {
-  if (transporter) return transporter
+async function getSmtpConfig(): Promise<{
+  host: string | undefined
+  port: number
+  user: string | undefined
+  pass: string | undefined
+  fromName: string
+  fromEmail: string
+}> {
+  const host = await getSetting("smtp_host")
+  const port = Number(await getSetting("smtp_port", "587"))
+  const user = await getSetting("smtp_user")
+  const pass = await getSetting("smtp_pass")
+  const fromName = await getSetting("smtp_from_name", APP_NAME)
+  const fromEmail = await getSetting("smtp_from_email")
 
-  const host = process.env.SMTP_HOST
-  const port = Number(process.env.SMTP_PORT) || 587
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-
-  if (!host || !user || !pass) {
-    console.warn("[Email] SMTP credentials not configured. Email sending is disabled.")
-  }
-
-  transporter = nodemailer.createTransport({
-    host,
+  return {
+    host: host || process.env.SMTP_HOST,
     port,
-    secure: port === 465,
-    auth: {
-      user,
-      pass,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-  })
-
-  return transporter
+    user: user || process.env.SMTP_USER,
+    pass: pass || process.env.SMTP_PASS,
+    fromName: fromName || process.env.SMTP_FROM_NAME || APP_NAME,
+    fromEmail: fromEmail || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "",
+  }
 }
 
 // ============ Email Sending ============
@@ -41,18 +39,30 @@ export async function sendEmail(
   html: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const transport = getTransporter()
+    // Invalidate cache to get fresh settings
+    const smtpConfig = await getSmtpConfig()
 
-    const fromName = process.env.SMTP_FROM_NAME || APP_NAME
-    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || ""
+    // Create a fresh transporter with settings-based config
+    const freshTransporter = nodemailer.createTransport({
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.port === 465,
+      auth: {
+        user: smtpConfig.user,
+        pass: smtpConfig.pass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
 
-    if (!fromEmail) {
+    if (!smtpConfig.fromEmail) {
       console.error("[Email] No sender email configured")
       return { success: false, error: "No sender email configured" }
     }
 
-    await transport.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
+    await freshTransporter.sendMail({
+      from: `"${smtpConfig.fromName}" <${smtpConfig.fromEmail}>`,
       to,
       subject,
       html,

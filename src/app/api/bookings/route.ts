@@ -5,6 +5,7 @@ import { APP_NAME } from "@/lib/constants";
 import { generateInvoiceNumber, generateTransactionId } from "@/lib/invoice";
 import { sendBookingConfirmation } from "@/lib/email";
 import { logBookingActivity } from "@/lib/activity-logger";
+import { getSetting } from "@/lib/settings";
 
 // ============ POST: Create Booking ============
 
@@ -58,7 +59,8 @@ export async function POST(request: NextRequest) {
     // Calculate final price
     const basePrice = service.price;
     const isOnlinePayment = paymentMethod === "stripe";
-    const discountPercent = isOnlinePayment ? 5 : 0;
+    const discountSetting = await getSetting("discount_percentage", "5");
+    const discountPercent = isOnlinePayment ? (Number(discountSetting) || 5) : 0;
     const finalPrice = isOnlinePayment
       ? basePrice - basePrice * (discountPercent / 100)
       : basePrice;

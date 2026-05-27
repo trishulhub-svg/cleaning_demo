@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { CURRENCY } from "@/lib/constants";
+import { getSetting } from "@/lib/settings";
 
 // ============ Stripe Instance ============
 
-function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
+async function getStripe() {
+  const secretKey = await getSetting("stripe_secret_key")
+    || process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
     throw new Error("STRIPE_SECRET_KEY is not configured");
   }
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
     const customerEmail = booking.guestEmail || undefined;
 
     // Create Stripe Checkout Session
-    const stripe = getStripe();
+    const stripe = await getStripe();
     const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 
     const session = await stripe.checkout.sessions.create({

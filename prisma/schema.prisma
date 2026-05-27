@@ -420,6 +420,16 @@ model StaffPasswordReset {
   @@index([staffId])
 }
 
+// ============ SITE SETTINGS ============
+model SiteSettings {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
 // ============ STAFF SESSIONS (from MySQL) ============
 model StaffSession {
   id           Int      @id @default(autoincrement())

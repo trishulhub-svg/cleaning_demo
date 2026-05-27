@@ -149,14 +149,33 @@ export function BookingClient({
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const addressInputRef = React.useRef<HTMLInputElement>(null);
   const suggestionsRef = React.useRef<HTMLDivElement>(null);
+  const [discountPercent, setDiscountPercent] = React.useState<number>(5);
+
+  // Fetch discount percentage from public settings
+  React.useEffect(() => {
+    async function fetchDiscount() {
+      try {
+        const res = await fetch("/api/settings/public");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && typeof data.data.discount_percentage === "number") {
+            setDiscountPercent(data.data.discount_percentage);
+          }
+        }
+      } catch {
+        // Fallback to default 5%
+      }
+    }
+    fetchDiscount();
+  }, []);
 
   const selectedService = services.find(
     (s) => s.id === parseInt(selectedServiceId, 10)
   );
 
   const basePrice = selectedService?.price ?? 0;
-  const discountPercent = paymentMethod === "online" ? 5 : 0;
-  const discountAmount = basePrice * (discountPercent / 100);
+  const effectiveDiscountPercent = paymentMethod === "online" ? discountPercent : 0;
+  const discountAmount = basePrice * (effectiveDiscountPercent / 100);
   const totalPrice = basePrice - discountAmount;
 
   // ─── Address Autocomplete (Debounced) ───────────────────────────────
@@ -661,16 +680,19 @@ export function BookingClient({
                     <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                       <span className="font-semibold text-sm">
-                        Pay Online (5% discount)
+                        Pay Online ({discountPercent}% discount)
                       </span>
-                      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
-                        <Percent className="h-3 w-3 mr-0.5" />
-                        5% OFF
-                      </Badge>
+                      {discountPercent > 0 && (
+                        <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
+                          <Percent className="h-3 w-3 mr-0.5" />
+                          {discountPercent}% OFF
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Pay securely via Stripe and get an instant 5% discount.
-                      We&apos;ll confirm your booking immediately.
+                      {discountPercent > 0
+                        ? `Pay securely via Stripe and get an instant ${discountPercent}% discount. We'll confirm your booking immediately.`
+                        : "Pay securely via Stripe. We'll confirm your booking immediately."}
                     </p>
                   </div>
                 </label>
@@ -779,11 +801,11 @@ export function BookingClient({
                     <span>{CURRENCY}{basePrice.toFixed(2)}</span>
                   </div>
 
-                  {discountAmount > 0 && (
+                  {discountAmount > 0 && effectiveDiscountPercent > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-primary font-medium flex items-center gap-1">
                         <Percent className="h-3 w-3" />
-                        Online Discount (5%)
+                        Online Discount ({discountPercent}%)
                       </span>
                       <span className="text-primary font-medium">
                         -{CURRENCY}{discountAmount.toFixed(2)}

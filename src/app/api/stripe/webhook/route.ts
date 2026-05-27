@@ -4,11 +4,13 @@ import { db } from "@/lib/db";
 import { sendEmail, sendRefundEmail, sendPaymentReceipt } from "@/lib/email";
 import { APP_NAME } from "@/lib/constants";
 import { logPaymentActivity } from "@/lib/activity-logger";
+import { getSetting } from "@/lib/settings";
 
 // ============ Stripe Instance ============
 
-function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
+async function getStripe() {
+  const secretKey = await getSetting("stripe_secret_key")
+    || process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
     throw new Error("STRIPE_SECRET_KEY is not configured");
   }
@@ -22,7 +24,7 @@ function getStripe() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
-    const stripe = getStripe();
+    const stripe = await getStripe();
 
     // Get the signature from headers
     const sig = request.headers.get("stripe-signature");
@@ -37,7 +39,8 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event;
 
     // Verify the webhook signature
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = await getSetting("stripe_webhook_secret")
+      || process.env.STRIPE_WEBHOOK_SECRET;
 
     // If webhook secret is not configured (test mode), construct event from body
     if (!webhookSecret || webhookSecret === "whsec_YOUR_WEBHOOK_SECRET_HERE") {
