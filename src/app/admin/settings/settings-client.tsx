@@ -19,6 +19,7 @@ import {
   Loader2,
   Shield,
   Save,
+  User,
 } from "lucide-react"
 
 // ─── Types ─────────────────────────────────────────────────────────
@@ -46,9 +47,16 @@ export function SettingsPageClient() {
   const [pendingSaveAction, setPendingSaveAction] = React.useState<(() => void) | null>(null)
   const [testEmailLoading, setTestEmailLoading] = React.useState(false)
 
-  // Fetch settings on mount
+  // Profile state
+  const [profileName, setProfileName] = React.useState("")
+  const [profileEmail, setProfileEmail] = React.useState("")
+  const [profileRole, setProfileRole] = React.useState("")
+  const [verifiedPassword, setVerifiedPassword] = React.useState("")
+
+  // Fetch settings and profile on mount
   React.useEffect(() => {
     fetchSettings()
+    fetchProfile()
   }, [])
 
   async function fetchSettings() {
@@ -95,14 +103,11 @@ export function SettingsPageClient() {
   }
 
   function initiateSave(saveFn: () => void) {
-    if (needsPasswordVerification()) {
-      setPendingSaveAction(() => saveFn)
-      setPasswordModal(true)
-      setConfirmPassword("")
-      setPasswordError("")
-    } else {
-      saveFn()
-    }
+    // ALWAYS require password verification for any settings change
+    setPendingSaveAction(() => saveFn)
+    setPasswordModal(true)
+    setConfirmPassword("")
+    setPasswordError("")
   }
 
   async function saveWithPassword() {
@@ -127,16 +132,54 @@ export function SettingsPageClient() {
         return
       }
 
-      // Password verified, execute pending save
+      // Password verified — store it and execute pending save
       setPasswordModal(false)
-      setConfirmPassword("")
       if (pendingSaveAction) {
+        setVerifiedPassword(confirmPassword)
         pendingSaveAction()
       }
+      setConfirmPassword("")
     } catch {
       setPasswordError("Verification failed. Please try again.")
     } finally {
       setVerifyingPassword(false)
+    }
+  }
+
+  async function fetchProfile() {
+    try {
+      const res = await fetch("/api/admin/profile")
+      if (!res.ok) throw new Error("Failed to fetch")
+      const data = await res.json()
+      if (data.success) {
+        setProfileName(data.data.name)
+        setProfileEmail(data.data.email)
+        setProfileRole(data.data.role)
+      }
+    } catch {
+      // Non-critical, don't show error
+    }
+  }
+
+  async function saveProfileSettings() {
+    setSaving("profile")
+    try {
+      const res = await fetch("/api/admin/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: profileName, email: profileEmail, confirmPassword: verifiedPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || "Failed to update profile")
+        return
+      }
+      toast.success("Profile updated successfully")
+    } catch {
+      toast.error("Failed to update profile")
+    } finally {
+      setSaving(null)
+      setVerifiedPassword("")
     }
   }
 
@@ -233,18 +276,7 @@ export function SettingsPageClient() {
   }
 
   async function saveSettings(updates: Record<string, string>) {
-    const needsPwd = Object.keys(updates).some((k) =>
-      ["stripe_secret_key", "stripe_webhook_secret", "smtp_pass", "smtp_user"].includes(k)
-    )
-
-    if (needsPwd) {
-      setPendingSaveAction(() => () => doSave(updates))
-      setPasswordModal(true)
-      setConfirmPassword("")
-      setPasswordError("")
-      return
-    }
-
+    // Password verification is handled by initiateSave() — always go straight to doSave
     await doSave(updates)
   }
 
@@ -255,7 +287,7 @@ export function SettingsPageClient() {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: updates, confirmPassword }),
+        body: JSON.stringify({ settings: updates, confirmPassword: verifiedPassword }),
       })
       const data = await res.json()
 
@@ -270,6 +302,7 @@ export function SettingsPageClient() {
       toast.error("Failed to save settings")
     } finally {
       setSaving(null)
+      setVerifiedPassword("")
     }
   }
 
@@ -308,7 +341,11 @@ export function SettingsPageClient() {
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+          <TabsTrigger value="account" className="gap-2">
+            <User className="h-4 w-4 hidden sm:block" />
+            Account
+          </TabsTrigger>
           <TabsTrigger value="company" className="gap-2">
             <Building2 className="h-4 w-4 hidden sm:block" />
             Company
@@ -326,6 +363,41 @@ export function SettingsPageClient() {
             Pricing
           </TabsTrigger>
         </TabsList>
+
+        {/* ─── Account Tab ─── */}
+        <TabsContent value="account">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Account Settings
+              </CardTitle>
+              <CardDescription>
+                Your admin account details. Password required to make changes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="admin_name">Full Name</Label>
+                  <Input id="admin_name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admin_email">Email Address</Label>
+                  <Input id="admin_email" type="email" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Badge variant="outline" className="text-sm">{profileRole}</Badge>
+              </div>
+              <Button onClick={() => initiateSave(saveProfileSettings)} disabled={saving === "profile"}>
+                {saving === "profile" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                Save Account Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* ─── Company Tab ─── */}
         <TabsContent value="company">
@@ -385,7 +457,7 @@ export function SettingsPageClient() {
                   onChange={(e) => handleEdit("company_address", e.target.value)}
                 />
               </div>
-              <Button onClick={() => saveCompanySettings()} disabled={saving === "save"}>
+              <Button onClick={() => initiateSave(saveCompanySettings)} disabled={saving === "save"}>
                 {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                 Save Company Info
               </Button>
@@ -475,7 +547,7 @@ export function SettingsPageClient() {
                 </p>
               </div>
 
-              <Button onClick={() => savePaymentSettings()} disabled={saving === "save"}>
+              <Button onClick={() => initiateSave(savePaymentSettings)} disabled={saving === "save"}>
                 {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                 Save Payment Settings
               </Button>
@@ -589,7 +661,7 @@ export function SettingsPageClient() {
               </div>
 
               <div className="flex gap-2">
-                <Button onClick={() => saveEmailSettings()} disabled={saving === "save"}>
+                <Button onClick={() => initiateSave(saveEmailSettings)} disabled={saving === "save"}>
                   {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                   Save Email Settings
                 </Button>
@@ -657,7 +729,7 @@ export function SettingsPageClient() {
                 </div>
               )}
 
-              <Button onClick={() => savePricingSettings()} disabled={saving === "save"}>
+              <Button onClick={() => initiateSave(savePricingSettings)} disabled={saving === "save"}>
                 {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                 Save Pricing Settings
               </Button>
@@ -676,7 +748,7 @@ export function SettingsPageClient() {
                 Verify Your Identity
               </CardTitle>
               <CardDescription>
-                Enter your current password to save sensitive settings
+                Enter your current password to confirm this change
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

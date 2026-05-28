@@ -1,5 +1,6 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import { AdminSidebar } from "@/components/admin-sidebar";
+import { AdminLayoutClient } from "@/components/admin-layout-client";
 import { redirect } from "next/navigation";
 
 export default async function AdminLayout({
@@ -19,7 +20,7 @@ export default async function AdminLayout({
       <AdminSidebar adminName={admin.name} adminRole={admin.role} />
       <main className="lg:pl-64">
         <div className="pt-14 lg:pt-0">
-          <div className="p-4 sm:p-6 lg:p-8">{children}</div>
+          <AdminLayoutClient>{children}</AdminLayoutClient>
         </div>
       </main>
     </div>

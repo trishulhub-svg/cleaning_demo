@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { showApiError } from "@/lib/error-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -296,9 +297,20 @@ function BookingsPageInner() {
         setStatusCounts(data.statusCounts);
         setTotal(data.total);
         setTotalPages(data.totalPages);
+      } else {
+        const errorBody = await res.text();
+        showApiError({
+          title: "Failed to Load Bookings",
+          error: new Error(`HTTP ${res.status}: ${errorBody}`),
+          context: `Fetching bookings (status: ${statusFilter}, page: ${page})`,
+        });
       }
     } catch (err) {
-      console.error("Failed to fetch bookings", err);
+      showApiError({
+        title: "Failed to Load Bookings",
+        error: err,
+        context: `Fetching bookings (status: ${statusFilter}, page: ${page})`,
+      });
     } finally {
       setLoading(false);
     }
@@ -310,9 +322,19 @@ function BookingsPageInner() {
       if (res.ok) {
         const data = await res.json();
         setStaff(data.staff);
+      } else {
+        showApiError({
+          title: "Failed to Load Staff",
+          error: new Error(`HTTP ${res.status}`),
+          context: "Fetching active staff list",
+        });
       }
     } catch (err) {
-      console.error("Failed to fetch staff", err);
+      showApiError({
+        title: "Failed to Load Staff",
+        error: err,
+        context: "Fetching active staff list",
+      });
     }
   }, []);
 
@@ -342,7 +364,11 @@ function BookingsPageInner() {
       });
       fetchBookings();
     } catch (err) {
-      console.error("Failed to update status", err);
+      showApiError({
+        title: "Failed to Update Status",
+        error: err,
+        context: `Updating booking #${bookingId} status to ${newStatus}`,
+      });
     }
   };
 
@@ -362,7 +388,11 @@ function BookingsPageInner() {
       });
       fetchBookings();
     } catch (err) {
-      console.error("Failed to update payment status", err);
+      showApiError({
+        title: "Failed to Update Payment Status",
+        error: err,
+        context: `Updating booking #${bookingId} payment status to ${newStatus}`,
+      });
     }
   };
 
@@ -446,6 +476,8 @@ function BookingsPageInner() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const jsPDF = require("jspdf");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("jspdf-autotable");
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -506,8 +538,7 @@ function BookingsPageInner() {
       doc.save(`GreenLeaf-Bookings-${format(new Date(), "yyyy-MM-dd")}.pdf`);
       toast.success("Bookings PDF exported successfully!");
     } catch (err) {
-      console.error("Failed to export PDF:", err);
-      toast.error("Failed to export PDF.");
+      showApiError({ title: "PDF Export Failed", error: err, context: "Exporting bookings to PDF" });
     } finally {
       setExporting(false);
     }

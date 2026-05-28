@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { showApiError } from "@/lib/error-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,6 +129,8 @@ export default function ReportsPage() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const jsPDF = require("jspdf");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("jspdf-autotable");
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -309,8 +312,7 @@ export default function ReportsPage() {
       doc.save(filename);
       toast.success("Report PDF exported successfully!");
     } catch (err) {
-      console.error("Failed to export PDF:", err);
-      toast.error("Failed to export PDF. Please try again.");
+      showApiError({ title: "PDF Export Failed", error: err, context: "Exporting reports to PDF" });
     } finally {
       setExporting(false);
     }
