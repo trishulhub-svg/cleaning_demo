@@ -9,7 +9,11 @@ import {
   ChevronDown,
   ChevronUp,
   ScrollText,
+  FileDown,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,6 +176,8 @@ export default function LogsPage() {
     setEndDate("");
   };
 
+  const [exporting, setExporting] = useState(false);
+
   const hasFilters =
     categoryFilter !== "all" ||
     severityFilter !== "all" ||
@@ -179,14 +185,90 @@ export default function LogsPage() {
     startDate !== "" ||
     endDate !== "";
 
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const jsPDF = require("jspdf");
+      const doc = new jsPDF("p", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 12;
+
+      // Header
+      doc.setFillColor(34, 197, 94);
+      doc.rect(0, 0, pageWidth, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("GreenLeaf Cleaning Services", margin, 12);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Activity Logs", margin, 20);
+      const filterDesc = hasFilters
+        ? `Filters: ${[categoryFilter !== "all" ? `Category: ${categoryFilter}` : "", severityFilter !== "all" ? `Severity: ${severityFilter}` : "", searchQuery ? `Search: ${searchQuery}` : "", startDate ? `From: ${startDate}` : "", endDate ? `To: ${endDate}` : ""].filter(Boolean).join(" | ")}`
+        : "All logs";
+      doc.setFontSize(8);
+      doc.text(filterDesc, margin, 25);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, pageWidth - margin, 12, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+
+      const tableBody = logs.map((log) => [
+        formatTimestamp(log.createdAt),
+        log.actorName,
+        log.action,
+        formatCategory(log.category),
+        log.severity,
+        log.targetName || "-",
+        log.details ? (log.details.length > 60 ? log.details.slice(0, 57) + "..." : log.details) : "-",
+      ]);
+
+      (doc as any).autoTable({
+        startY: 35,
+        head: [["Timestamp", "Actor", "Action", "Category", "Severity", "Target", "Details"]],
+        body: tableBody,
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 7 },
+        bodyStyles: { fontSize: 6.5 },
+        columnStyles: {
+          0: { cellWidth: 28 },
+          2: { cellWidth: 28 },
+          6: { cellWidth: 40 },
+        },
+      });
+
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: "center" });
+      }
+
+      doc.save(`GreenLeaf-ActivityLogs-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      toast.success("Activity logs PDF exported successfully!");
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+      toast.error("Failed to export PDF.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Activity Logs</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Monitor all system activity and actions ({total} entries)
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Activity Logs</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Monitor all system activity and actions ({total} entries)
+          </p>
+        </div>
+        <Button variant="outline" onClick={handleExportPdf} disabled={exporting || loading} className="gap-2">
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          Export PDF
+        </Button>
       </div>
 
       {/* Filters */}

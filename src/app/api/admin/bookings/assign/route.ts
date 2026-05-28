@@ -63,6 +63,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Double-booking prevention: check if staff already has assignment at same date/time ──
+    const existingAssignment = await db.bookingAssignment.findFirst({
+      where: {
+        staffId,
+        status: { notIn: ["completed", "cancelled"] },
+        booking: {
+          bookingDate: booking.bookingDate,
+          bookingTime: booking.bookingTime,
+        },
+      },
+      include: {
+        booking: {
+          select: {
+            id: true,
+            bookingDate: true,
+            bookingTime: true,
+            service: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (existingAssignment) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `This staff member already has an assignment on ${existingAssignment.booking.bookingDate} at ${existingAssignment.booking.bookingTime?.slice(0, 5)} (Booking #${existingAssignment.booking.id}: ${existingAssignment.booking.service.name}). Double-booking is not allowed.`,
+          code: "DOUBLE_BOOKING",
+        },
+        { status: 409 }
+      );
+    }
+
     // ── Validate staff is active ──
     const staff = await db.staff.findUnique({
       where: { id: staffId },
@@ -82,7 +115,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Create assignment (no QR code — generated when staff starts cleaning) ──
+    // ── Create assignment ──
     const assignment = await db.bookingAssignment.create({
       data: {
         bookingId,

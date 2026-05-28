@@ -17,6 +17,10 @@ import {
   Timer,
   Loader2,
   QrCode,
+  FileText,
+  ClipboardList,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   Card,
@@ -47,6 +51,7 @@ interface Assignment {
     bookingDate: string;
     bookingTime: string;
     address: string;
+    accessNotes: string | null;
     totalPrice: number;
     bookingStatus: string;
     paymentStatus: string;
@@ -435,6 +440,57 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
+// ============ Notes Indicator Component ============
+
+function NotesIndicator({ assignment }: { assignment: Assignment }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasCustomerNotes = !!assignment.booking.accessNotes;
+  const hasAdminNotes = !!assignment.notes;
+  const hasNotes = hasCustomerNotes || hasAdminNotes;
+
+  if (!hasNotes) return null;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        className="flex items-center gap-1 text-xs text-green-700 hover:text-green-800 bg-green-50 border border-green-200 rounded-full px-2 py-1 transition-colors shrink-0"
+      >
+        {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        <FileText className="h-3 w-3" />
+        Notes
+      </button>
+      {expanded && (
+        <div className="absolute z-20 right-0 top-full mt-1 w-64 rounded-lg border bg-white shadow-lg p-3 space-y-2">
+          {hasCustomerNotes && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 mb-1 flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                Customer Notes
+              </p>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {assignment.booking.accessNotes}
+              </p>
+            </div>
+          )}
+          {hasAdminNotes && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 mb-1 flex items-center gap-1">
+                <ClipboardList className="h-3 w-3" />
+                Admin Instructions
+              </p>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {assignment.notes}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ Page Component ============
 
 export default function StaffDashboardPage() {
@@ -683,6 +739,9 @@ export default function StaffDashboardPage() {
                       </Button>
                     )}
 
+                    {/* Notes Indicator */}
+                    <NotesIndicator assignment={assignment} />
+
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 shrink-0">
                       <ActionButton
@@ -797,6 +856,7 @@ export default function StaffDashboardPage() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <NotesIndicator assignment={assignment} />
                             {(assignment.status === "in_progress" || assignment.status === "cash_pending") && assignment.qrCode && (
                               <Button
                                 type="button"

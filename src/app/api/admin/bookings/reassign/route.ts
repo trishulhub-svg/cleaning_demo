@@ -87,6 +87,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Double-booking prevention: check if new staff has another assignment at same date/time ──
+    const conflictingAssignment = await db.bookingAssignment.findFirst({
+      where: {
+        staffId: newStaffId,
+        id: { not: assignmentId },
+        status: { notIn: ["completed", "cancelled"] },
+        booking: {
+          bookingDate: assignment.booking.bookingDate,
+          bookingTime: assignment.booking.bookingTime,
+        },
+      },
+      include: {
+        booking: {
+          select: {
+            id: true,
+            bookingDate: true,
+            bookingTime: true,
+            service: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (conflictingAssignment) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `The new staff member already has an assignment on ${conflictingAssignment.booking.bookingDate} at ${conflictingAssignment.booking.bookingTime?.slice(0, 5)} (Booking #${conflictingAssignment.booking.id}: ${conflictingAssignment.booking.service.name}). Double-booking is not allowed.`,
+          code: "DOUBLE_BOOKING",
+        },
+        { status: 409 }
+      );
+    }
+
     // ── Build updated notes ──
     const oldNotes = assignment.notes || "";
     const noteSeparator = oldNotes ? "\n\n--- Reassignment ---\n" : "";

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import {
   Search,
   Filter,
-  Download,
+  FileDown,
   UserPlus,
   ChevronLeft,
   ChevronRight,
@@ -14,7 +14,10 @@ import {
   Phone,
   Shield,
   AlertCircle,
+  Loader2,
+  UserMinus,
 } from "lucide-react";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -266,6 +269,15 @@ function BookingsPageInner() {
     qrCode: string;
   } | null>(null);
 
+  // Unassign confirm dialog
+  const [unassignDialog, setUnassignDialog] = useState<{
+    open: boolean;
+    bookingId: number;
+    bookingLabel: string;
+  } | null>(null);
+  const [unassigning, setUnassigning] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
@@ -429,46 +441,99 @@ function BookingsPageInner() {
     }
   };
 
-  const handleExport = () => {
-    const csvRows = [
-      [
-        "ID",
-        "Customer",
-        "Email",
-        "Service",
-        "Date",
-        "Time",
-        "Address",
-        "Price",
-        "Status",
-        "Payment",
-        "Staff",
-        "QR Code",
-      ].join(","),
-      ...bookings.map((b) =>
-        [
-          b.id,
-          `"${b.user?.name || b.guestName || "Guest"}"`,
-          `"${b.user?.email || b.guestEmail || ""}"`,
-          `"${b.service.name}"`,
-          b.bookingDate,
-          b.bookingTime?.slice(0, 5),
-          `"${b.address}"`,
-          b.totalPrice,
-          b.bookingStatus,
-          b.paymentStatus,
-          `"${b.assignedStaff?.name || "Unassigned"}"`,
-          `"${b.assignment?.qrCode || ""}"`,
-        ].join(",")
-      ),
-    ];
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bookings-export-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const jsPDF = require("jspdf");
+      const doc = new jsPDF("p", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 12;
+
+      // Header
+      doc.setFillColor(34, 197, 94);
+      doc.rect(0, 0, pageWidth, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("GreenLeaf Cleaning Services", margin, 12);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Bookings Report", margin, 20);
+      doc.setFontSize(8);
+      doc.text(`Filter: ${statusFilter} | Date: ${dateFilter} | Assignment: ${assignmentFilter}`, margin, 25);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, pageWidth - margin, 12, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+
+      const tableBody = bookings.map((b) => [
+        `#${b.id}`,
+        b.user?.name || b.guestName || "Guest",
+        b.user?.email || b.guestEmail || "-",
+        b.service.name,
+        b.bookingDate,
+        b.bookingTime?.slice(0, 5) || "-",
+        b.address.length > 40 ? b.address.slice(0, 37) + "..." : b.address,
+        `${CURRENCY}${b.totalPrice.toFixed(2)}`,
+        b.bookingStatus.replace(/_/g, " "),
+        b.paymentStatus.replace(/_/g, " "),
+        b.assignedStaff?.name || "Unassigned",
+      ]);
+
+      (doc as any).autoTable({
+        startY: 35,
+        head: [["Booking ID", "Customer", "Email", "Service", "Date", "Time", "Address", "Price", "Status", "Payment", "Staff"]],
+        body: tableBody,
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 12 },
+          2: { cellWidth: 22 },
+          6: { cellWidth: 35 },
+        },
+      });
+
+      // Page numbers
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: "center" });
+      }
+
+      doc.save(`GreenLeaf-Bookings-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      toast.success("Bookings PDF exported successfully!");
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+      toast.error("Failed to export PDF.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleUnassign = async (bookingId: number) => {
+    setUnassigning(true);
+    try {
+      const res = await fetch("/api/admin/bookings/unassign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to unassign");
+        return;
+      }
+      toast.success("Staff unassigned successfully!");
+      setUnassignDialog(null);
+      fetchBookings();
+    } catch (err) {
+      toast.error("Failed to unassign staff.");
+    } finally {
+      setUnassigning(false);
+    }
   };
 
   const getCustomerName = (b: Booking) =>
@@ -491,9 +556,9 @@ function BookingsPageInner() {
             Manage all cleaning bookings ({total} total)
           </p>
         </div>
-        <Button variant="outline" onClick={handleExport} className="gap-2">
-          <Download className="h-4 w-4" />
-          Export CSV
+        <Button variant="outline" onClick={handleExportPdf} disabled={exporting} className="gap-2">
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          Export PDF
         </Button>
       </div>
 
@@ -710,22 +775,39 @@ function BookingsPageInner() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {booking.assignedStaff && booking.bookingStatus !== 'completed' && booking.bookingStatus !== 'cancelled' ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setAssignModal({
-                                  open: true,
-                                  bookingId: booking.id,
-                                  isReassign: true,
-                                  assignmentId: booking.assignment?.id,
-                                  currentStaff: booking.assignedStaff.name,
-                                })
-                              }
-                              className="h-7 text-xs"
-                            >
-                              Reassign
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setAssignModal({
+                                    open: true,
+                                    bookingId: booking.id,
+                                    isReassign: true,
+                                    assignmentId: booking.assignment?.id,
+                                    currentStaff: booking.assignedStaff.name,
+                                  })
+                                }
+                                className="h-7 text-xs"
+                              >
+                                Reassign
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setUnassignDialog({
+                                    open: true,
+                                    bookingId: booking.id,
+                                    bookingLabel: `#${booking.id} (${booking.assignedStaff.name})`,
+                                  })
+                                }
+                                className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <UserMinus className="h-3 w-3 mr-1" />
+                                Unassign
+                              </Button>
+                            </>
                           ) : (
                             <Button
                               size="sm"
@@ -953,6 +1035,38 @@ function BookingsPageInner() {
           qrCode={qrResult.qrCode}
         />
       )}
+
+      {/* Unassign Confirmation Dialog */}
+      <Dialog
+        open={unassignDialog?.open || false}
+        onOpenChange={(open) => !open && setUnassignDialog(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <UserMinus className="h-5 w-5" />
+              Unassign Staff
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove the staff assignment for booking{" "}
+              <strong>{unassignDialog?.bookingLabel}</strong>? The booking will
+              be set back to pending status.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUnassignDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => unassignDialog && handleUnassign(unassignDialog.bookingId)}
+              disabled={unassigning}
+            >
+              {unassigning ? "Removing..." : "Unassign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

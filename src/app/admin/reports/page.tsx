@@ -10,7 +10,10 @@ import {
   RotateCcw,
   BarChart3,
   Clock,
+  FileDown,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CURRENCY } from "@/lib/constants";
+import { format } from "date-fns";
 
 interface RevenueData {
   total: number;
@@ -86,6 +90,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -116,6 +121,201 @@ export default function ReportsPage() {
 
   const totalBookings = statusBreakdown.reduce((a, b) => a + b.count, 0);
 
+  // ── PDF Export ──
+  const handleExportPdf = async () => {
+    if (loading) return;
+    setExporting(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const jsPDF = require("jspdf");
+      const doc = new jsPDF("p", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+
+      // ── Header ──
+      doc.setFillColor(34, 197, 94);
+      doc.rect(0, 0, pageWidth, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("GreenLeaf Cleaning Services", margin, 12);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Financial Report", margin, 20);
+      const dateRangeStr = dateFrom || dateTo
+        ? `Date Range: ${dateFrom || "All"} to ${dateTo || "All"}`
+        : "All Time";
+      doc.setFontSize(8);
+      doc.text(dateRangeStr, margin, 25);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, pageWidth - margin, 12, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+
+      let y = 35;
+
+      // Helper to add section heading
+      const addHeading = (title: string) => {
+        if (y + 15 > pageHeight - 15) {
+          doc.addPage();
+          y = 15;
+        }
+        doc.setFillColor(240, 253, 244);
+        doc.rect(margin, y - 4, pageWidth - margin * 2, 8, "F");
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(22, 101, 52);
+        doc.text(title, margin, y + 1);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+        y += 10;
+      };
+
+      // Helper to ensure page space
+      const ensureSpace = (needed: number) => {
+        if (y + needed > pageHeight - 15) {
+          doc.addPage();
+          y = 15;
+        }
+      };
+
+      // ── Summary Cards Table ──
+      addHeading("Revenue Summary");
+      ensureSpace(30);
+      (doc as any).autoTable({
+        startY: y,
+        head: [["Metric", "Value"]],
+        body: [
+          ["Total Revenue", `${CURRENCY}${(revenue?.total ?? 0).toFixed(2)}`],
+          ["This Month", `${CURRENCY}${(revenue?.thisMonth ?? 0).toFixed(2)}`],
+          ["This Week", `${CURRENCY}${(revenue?.thisWeek ?? 0).toFixed(2)}`],
+          ["Today", `${CURRENCY}${(revenue?.today ?? 0).toFixed(2)}`],
+        ],
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        columnStyles: { 0: { fontStyle: "bold" } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+
+      // ── Booking Status Breakdown ──
+      addHeading("Booking Status Breakdown");
+      ensureSpace(20);
+      (doc as any).autoTable({
+        startY: y,
+        head: [["Status", "Count", "Revenue", "%"]],
+        body: statusBreakdown.map((s) => [
+          s.status.replace(/_/g, " "),
+          String(s.count),
+          `${CURRENCY}${s.revenue.toFixed(2)}`,
+          totalBookings > 0 ? `${((s.count / totalBookings) * 100).toFixed(1)}%` : "0%",
+        ]),
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+
+      // ── Payment Method Breakdown ──
+      addHeading("Revenue by Payment Method");
+      ensureSpace(20);
+      const totalRev = paymentMethods.reduce((a, b) => a + b.revenue, 0);
+      (doc as any).autoTable({
+        startY: y,
+        head: [["Method", "Revenue", "Transactions", "%"]],
+        body: paymentMethods.map((pm) => [
+          pm.method === "stripe" ? "Card (Stripe)" : pm.method === "cash" ? "Cash" : pm.method,
+          `${CURRENCY}${pm.revenue.toFixed(2)}`,
+          String(pm.count),
+          totalRev > 0 ? `${((pm.revenue / totalRev) * 100).toFixed(1)}%` : "0%",
+        ]),
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+
+      // ── Top Services Table ──
+      addHeading("Top Services by Revenue");
+      ensureSpace(20);
+      (doc as any).autoTable({
+        startY: y,
+        head: [["#", "Service", "Revenue", "Bookings"]],
+        body: topServices.map((s, idx) => [
+          String(idx + 1),
+          s.serviceName,
+          `${CURRENCY}${s.revenue.toFixed(2)}`,
+          String(s.bookings),
+        ]),
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+
+      // ── Refund Summary ──
+      addHeading("Refund Summary");
+      ensureSpace(20);
+      (doc as any).autoTable({
+        startY: y,
+        head: [["Metric", "Value"]],
+        body: [
+          ["Total Processed Refunds", `${CURRENCY}${(refunds?.totalProcessed ?? 0).toFixed(2)}`],
+          ["Pending Amount", `${CURRENCY}${(refunds?.pendingAmount ?? 0).toFixed(2)}`],
+          ["Pending Count", String(refunds?.pendingCount ?? 0)],
+          ["Net Revenue", `${CURRENCY}${((revenue?.total ?? 0) - (refunds?.totalProcessed ?? 0)).toFixed(2)}`],
+        ],
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        columnStyles: { 0: { fontStyle: "bold" } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+
+      // ── Daily Revenue Chart (capture via html2canvas) ──
+      if (dailyRevenue.length > 0) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const html2canvas = require("html2canvas");
+          const el = document.getElementById("revenue-chart-capture");
+          if (el) {
+            ensureSpace(80);
+            addHeading("Daily Revenue (Last 30 Days)");
+            const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false });
+            const imgData = canvas.toDataURL("image/png");
+            const imgWidth = pageWidth - margin * 2;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            if (y + imgHeight > pageHeight - 15) {
+              doc.addPage();
+              y = 15;
+            }
+            doc.addImage(imgData, "PNG", margin, y, imgWidth, imgHeight);
+            y += imgHeight + 8;
+          }
+        } catch (chartErr) {
+          console.error("Failed to capture chart for PDF:", chartErr);
+        }
+      }
+
+      // ── Page Numbers ──
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: "center" });
+      }
+
+      const filename = `GreenLeaf-Report-${format(new Date(), "yyyy-MM-dd")}.pdf`;
+      doc.save(filename);
+      toast.success("Report PDF exported successfully!");
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+      toast.error("Failed to export PDF. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -126,6 +326,14 @@ export default function ReportsPage() {
             Revenue analytics and business insights
           </p>
         </div>
+        <Button variant="outline" onClick={handleExportPdf} disabled={loading || exporting} className="gap-2">
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileDown className="h-4 w-4" />
+          )}
+          Export PDF
+        </Button>
       </div>
 
       {/* Date Range Filter */}
@@ -506,7 +714,7 @@ export default function ReportsPage() {
               No daily revenue data available
             </p>
           ) : (
-            <div className="flex items-end gap-[2px] h-48 overflow-x-auto pb-2">
+            <div id="revenue-chart-capture" className="flex items-end gap-[2px] h-48 overflow-x-auto pb-2 bg-white p-2 rounded">
               {dailyRevenue.map((d) => {
                 const maxRev = Math.max(
                   ...dailyRevenue.map((x) => x._sum.totalPrice),

@@ -49,12 +49,22 @@ interface StaffMember {
   isActive: boolean;
   createdAt: string;
   _count: { bookings: number };
+  status?: "working" | "available" | "off_duty";
 }
 
-const ROLES = ["cleaner", "supervisor", "manager"];
+interface AdminMember {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
+const ROLES = ["cleaner", "supervisor"];
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [admins, setAdmins] = useState<AdminMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -84,10 +94,16 @@ export default function StaffPage() {
   const fetchStaff = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/staff");
+      const res = await fetch("/api/admin/staff/status");
       if (res.ok) {
         const data = await res.json();
         setStaff(data.staff);
+        // Also fetch admins for super_admin display
+        const adminsRes = await fetch("/api/admin/admins");
+        if (adminsRes.ok) {
+          const adminsData = await adminsRes.json();
+          setAdmins(adminsData.admins || []);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch staff", err);
@@ -246,6 +262,53 @@ export default function StaffPage() {
         />
       </div>
 
+      {/* Managers Section (super_admin only) */}
+      {admins.length > 0 && (
+        <Card className="py-0 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="px-5 py-4 border-b bg-purple-50">
+              <CardTitle className="text-base text-purple-900">Managers</CardTitle>
+              <p className="text-xs text-purple-600 mt-0.5">Admin accounts managed by super admin</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="hidden sm:table-cell">Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {admins.map((admin) => (
+                    <TableRow key={admin.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700 text-xs font-bold">
+                            {admin.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                          </div>
+                          {admin.name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-500">{admin.email}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 capitalize">
+                          {admin.role.replace(/_/g, " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm text-gray-500">
+                        {new Date(admin.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Staff Table */}
       <Card className="py-0 overflow-hidden">
         <CardContent className="p-0">
@@ -310,16 +373,21 @@ export default function StaffPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={member.isActive ? "default" : "secondary"}
-                          className={
-                            member.isActive
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : "bg-gray-100 text-gray-500 border-gray-200"
-                          }
-                        >
-                          {member.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        {member.status === "working" && (
+                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                            🟢 Working
+                          </Badge>
+                        )}
+                        {member.status === "available" && (
+                          <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                            ⚪ Available
+                          </Badge>
+                        )}
+                        {member.status === "off_duty" && (
+                          <Badge className="bg-red-100 text-red-700 border-red-200">
+                            🔴 Off Duty
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <span className="text-sm">{member._count.bookings}</span>

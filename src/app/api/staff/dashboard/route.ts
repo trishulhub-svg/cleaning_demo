@@ -30,7 +30,17 @@ export async function GET() {
       where: { staffId: session.user.id },
       include: {
         booking: {
-          include: {
+          select: {
+            id: true,
+            bookingDate: true,
+            bookingTime: true,
+            address: true,
+            accessNotes: true,
+            totalPrice: true,
+            bookingStatus: true,
+            paymentStatus: true,
+            paymentMethod: true,
+            guestName: true,
             service: { select: { name: true, durationHours: true } },
             user: { select: { name: true, email: true, phone: true } },
           },
