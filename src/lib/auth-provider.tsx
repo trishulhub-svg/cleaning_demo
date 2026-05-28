@@ -78,11 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (fetched) return;
     setFetched(true);
 
-    fetchSession().then(() => {
-      // Also set up periodic refresh
-      const interval = setInterval(fetchSession, 60_000);
-      return () => clearInterval(interval);
-    });
+    fetchSession();
+
+    // Set up periodic refresh — store ref so cleanup can clear it
+    const interval = setInterval(fetchSession, 60_000);
+    return () => clearInterval(interval);
   }, [fetchSession, fetched]);
 
   // Re-fetch session when pathname changes (to pick up cookie changes from server)

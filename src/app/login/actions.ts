@@ -133,19 +133,26 @@ export async function loginAction(
 
     const cookieStore = await cookies()
     const isProduction = process.env.NODE_ENV === 'production'
-    // Cookie maxAge: 5 minutes of inactivity (sliding window, refreshed on each auth page load)
+    // Cookie maxAge: 30 minutes of inactivity (sliding window, refreshed on each auth page load)
     // JWT exp remains 30 days as hard ceiling
     cookieStore.set('next-auth.session-token', token, {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      maxAge: 5 * 60, // 5 minutes
+      maxAge: 30 * 60, // 30 minutes — matches refreshSessionCookie()
     })
 
-    const callbackUrl = formData.get('callbackUrl') as string
-    if (callbackUrl) {
-      return { success: true, url: callbackUrl }
+    // Validate callbackUrl to prevent open redirect attacks.
+    // Only allow relative paths starting with "/" — reject absolute URLs.
+    const rawCallbackUrl = formData.get('callbackUrl') as string | null
+    if (rawCallbackUrl) {
+      const url = rawCallbackUrl.trim()
+      // Must start with / and NOT start with // (protocol-relative URL)
+      if (url.startsWith('/') && !url.startsWith('//')) {
+        return { success: true, url }
+      }
+      // Silently ignore invalid callbackUrl — fall through to role-based redirect
     }
 
     // Staff with mustChangePassword → redirect to set password page

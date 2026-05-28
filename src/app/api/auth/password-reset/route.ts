@@ -164,11 +164,10 @@ export async function PUT(request: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim()
     const normalizedOtp = otp.trim()
 
-    // Find the most recent unverified OTP for password reset
+    // Find the most recent unverified OTP for password reset (NOT filtered by otpCode)
     const otpRecord = await db.otpLog.findFirst({
       where: {
         email: normalizedEmail,
-        otpCode: normalizedOtp,
         purpose: OTP_PURPOSES.PASSWORD_RESET,
         verifiedAt: null,
       },
@@ -199,14 +198,13 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Increment attempt counter
-    await db.otpLog.update({
-      where: { id: otpRecord.id },
-      data: { attempts: { increment: 1 } },
-    })
-
-    // Verify the OTP code
+    // Verify the OTP code manually (since query is not filtered by otpCode)
     if (normalizedOtp !== otpRecord.otpCode) {
+      // Increment attempt counter for wrong code
+      await db.otpLog.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      })
       const remainingAttempts = OTP_MAX_ATTEMPTS - otpRecord.attempts - 1
       return NextResponse.json(
         {

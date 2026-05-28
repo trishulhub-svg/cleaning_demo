@@ -56,6 +56,13 @@ function LoginForm() {
       ? "Please sign in to continue."
       : state?.error
 
+  // Success message from URL param
+  const successMessage = searchParams.get("registered") === "true"
+    ? "Account created successfully! Please sign in with your credentials."
+    : searchParams.get("reset") === "true"
+      ? "Password reset successfully! Please sign in with your new password."
+      : null
+
   return (
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-12">
       <Card className="w-full max-w-md shadow-lg">
@@ -71,6 +78,13 @@ function LoginForm() {
 
         <CardContent>
           <form action={formAction} className="space-y-4">
+            {/* Success message */}
+            {successMessage && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
+                {successMessage}
+              </div>
+            )}
+
             {/* Error message */}
             {errorMessage && (
               <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
