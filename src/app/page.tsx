@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { APP_NAME, CURRENCY, COMPANY_PHONE, WHATSAPP_NUMBER } from "@/lib/constants";
+import { getSetting } from "@/lib/settings";
 import { QuickBookingForm } from "@/components/home/quick-booking-form";
 import { FloatingWhatsApp } from "@/components/home/floating-whatsapp";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,55 @@ async function getStats() {
   }
 }
 
+async function getReviewStats() {
+  try {
+    const [avgResult, countResult] = await Promise.all([
+      db.review.aggregate({
+        where: { isApproved: true },
+        _avg: { rating: true },
+        _count: true,
+      }),
+      db.review.aggregate({
+        _count: true,
+      }),
+    ]);
+    return {
+      averageRating: avgResult._avg.rating ? Number(avgResult._avg.rating.toFixed(1)) : 4.9,
+      approvedReviewCount: avgResult._count || 0,
+      totalReviewCount: countResult._count || 0,
+    };
+  } catch {
+    return { averageRating: 4.9, approvedReviewCount: 0, totalReviewCount: 0 };
+  }
+}
+
+async function getSiteSettings() {
+  const [
+    companyName,
+    companyPhone,
+    companyAddress,
+    whatsappNumber,
+    averageRatingSetting,
+    reviewCountSetting,
+  ] = await Promise.all([
+    getSetting("company_name", "GreenLeaf Cleaning"),
+    getSetting("company_phone", "07700 000 000"),
+    getSetting("company_address", "123 Green Lane, London, EC1A 1BB"),
+    getSetting("whatsapp_number", "447700000000"),
+    getSetting("average_rating", ""),
+    getSetting("review_count", ""),
+  ]);
+
+  return {
+    companyName,
+    companyPhone,
+    companyAddress,
+    whatsappNumber,
+    averageRatingSetting: averageRatingSetting ? Number(averageRatingSetting) : null,
+    reviewCountSetting: reviewCountSetting ? Number(reviewCountSetting) : null,
+  };
+}
+
 // ─── Static Data ─────────────────────────────────────────────────────────
 
 const trustBadges = [
@@ -96,48 +146,6 @@ const howItWorksSteps = [
   },
 ];
 
-const whyChooseUs = [
-  {
-    icon: Shield,
-    title: "Fully Insured & Vetted",
-    description:
-      "Every cleaner is DBS checked, fully insured, and vetted through our rigorous selection process.",
-  },
-  {
-    icon: Leaf,
-    title: "Eco-Friendly Products",
-    description:
-      "We use only environmentally friendly, non-toxic cleaning products that are safe for your family and pets.",
-  },
-  {
-    icon: Award,
-    title: "Satisfaction Guaranteed",
-    description:
-      "If you're not 100% happy with our service, we'll come back and re-clean for absolutely free.",
-  },
-  {
-    icon: Clock,
-    title: "Flexible Scheduling",
-    description:
-      "Book for any day of the week, including weekends. Same-day booking available for urgent needs.",
-  },
-  {
-    icon: Star,
-    title: "5-Star Consistency",
-    description:
-      "With an average rating of 4.9/5 from over 2,000 reviews, excellence is our standard.",
-  },
-  {
-    icon: Search,
-    title: "Transparent Pricing",
-    description:
-      "No hidden fees or surprise charges. You see the full price before confirming your booking.",
-  },
-];
-
-const heroImage =
-  "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80";
-
 // ─── Service Icon Mapper ─────────────────────────────────────────────────
 
 function getServiceIcon(name: string) {
@@ -151,10 +159,69 @@ function getServiceIcon(name: string) {
 // ─── Homepage Component ──────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const [services, stats] = await Promise.all([
+  const [services, stats, reviewStats, siteSettings] = await Promise.all([
     getFeaturedServices(),
     getStats(),
+    getReviewStats(),
+    getSiteSettings(),
   ]);
+
+  // Use DB-computed review stats if available, otherwise fall back to settings, then hardcoded
+  const displayRating = reviewStats.approvedReviewCount > 0
+    ? reviewStats.averageRating
+    : (siteSettings.averageRatingSetting || 4.9);
+
+  const displayReviewCount = siteSettings.reviewCountSetting || 2000;
+  const displayAppName = siteSettings.companyName || APP_NAME;
+  const displayPhone = siteSettings.companyPhone || COMPANY_PHONE;
+  const displayWhatsapp = siteSettings.whatsappNumber || WHATSAPP_NUMBER;
+
+  // Generate star icons for the hero rating display
+  const fullStars = Math.floor(displayRating);
+  const hasHalf = displayRating - fullStars >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
+
+  const whyChooseUs = [
+    {
+      icon: Shield,
+      title: "Fully Insured & Vetted",
+      description:
+        "Every cleaner is DBS checked, fully insured, and vetted through our rigorous selection process.",
+    },
+    {
+      icon: Leaf,
+      title: "Eco-Friendly Products",
+      description:
+        "We use only environmentally friendly, non-toxic cleaning products that are safe for your family and pets.",
+    },
+    {
+      icon: Award,
+      title: "Satisfaction Guaranteed",
+      description:
+        "If you're not 100% happy with our service, we'll come back and re-clean for absolutely free.",
+    },
+    {
+      icon: Clock,
+      title: "Flexible Scheduling",
+      description:
+        "Book for any day of the week, including weekends. Same-day booking available for urgent needs.",
+    },
+    {
+      icon: Star,
+      title: "5-Star Consistency",
+      description:
+        `With an average rating of ${displayRating}/5 from over ${displayReviewCount.toLocaleString()} reviews, excellence is our standard.`,
+    },
+    {
+      icon: Search,
+      title: "Transparent Pricing",
+      description:
+        "No hidden fees or surprise charges. You see the full price before confirming your booking.",
+    },
+  ];
+
+  const heroImage =
+    "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80";
 
   return (
     <>
@@ -221,15 +288,27 @@ export default async function HomePage() {
                   </div>
                   <div className="ml-1 text-sm">
                     <div className="flex items-center gap-0.5">
-                      {[1, 2, 3, 4, 5].map((i) => (
+                      {Array.from({ length: fullStars }).map((_, i) => (
                         <Star
-                          key={i}
+                          key={`full-${i}`}
                           className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400"
+                        />
+                      ))}
+                      {hasHalf && (
+                        <Star
+                          key="half"
+                          className="h-3.5 w-3.5 fill-yellow-400/50 text-yellow-400"
+                        />
+                      )}
+                      {Array.from({ length: emptyStars }).map((_, i) => (
+                        <Star
+                          key={`empty-${i}`}
+                          className="h-3.5 w-3.5 text-yellow-400/30"
                         />
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      4.9 from 2,000+ reviews
+                      {displayRating} from {displayReviewCount.toLocaleString()}+ reviews
                     </p>
                   </div>
                 </div>
@@ -304,7 +383,7 @@ export default async function HomePage() {
                 icon: Users,
               },
               {
-                value: "4.9",
+                value: `${displayRating}`,
                 label: "Average Rating",
                 icon: Star,
               },
@@ -516,7 +595,7 @@ export default async function HomePage() {
             <div className="lg:col-span-3">
               <div className="mb-10">
                 <Badge variant="outline" className="mb-3 border-primary/20 text-primary">
-                  Why GreenLeaf
+                  Why {displayAppName}
                 </Badge>
                 <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
                   Why Choose Us
@@ -579,7 +658,7 @@ export default async function HomePage() {
               Ready for a Spotless Space?
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-white/80">
-              Join thousands of happy customers who trust {APP_NAME} for their
+              Join thousands of happy customers who trust {displayAppName} for their
               cleaning needs. Book today and experience the difference.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -595,7 +674,7 @@ export default async function HomePage() {
                 </Link>
               </Button>
               <a
-                href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent("Hi! I'd like to book a cleaning service.")}`}
+                href={`https://wa.me/${displayWhatsapp}?text=${encodeURIComponent("Hi! I'd like to book a cleaning service.")}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -609,7 +688,7 @@ export default async function HomePage() {
                 </Button>
               </a>
               <a
-                href={`tel:${COMPANY_PHONE.replace(/\s/g, "")}`}
+                href={`tel:${displayPhone.replace(/\s/g, "")}`}
               >
                 <Button
                   size="lg"
@@ -626,7 +705,7 @@ export default async function HomePage() {
       </section>
 
       {/* Floating WhatsApp Button */}
-      <FloatingWhatsApp />
+      <FloatingWhatsApp whatsappNumber={displayWhatsapp} />
     </>
   );
 }

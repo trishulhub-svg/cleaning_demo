@@ -29,6 +29,15 @@ export const SETTINGS_KEYS = {
 
   // Pricing
   DISCOUNT_PERCENTAGE: 'discount_percentage',
+
+  // Home page / public display
+  AVERAGE_RATING: 'average_rating',
+  REVIEW_COUNT: 'review_count',
+
+  // Social media
+  SOCIAL_FACEBOOK: 'social_facebook',
+  SOCIAL_INSTAGRAM: 'social_instagram',
+  SOCIAL_TWITTER: 'social_twitter',
 } as const
 
 /** Sensitive keys that should be masked in the UI */

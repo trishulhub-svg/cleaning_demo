@@ -5,6 +5,7 @@ import {
   COMPANY_EMAIL,
   WHATSAPP_NUMBER,
 } from "@/lib/constants";
+import { getSetting } from "@/lib/settings";
 import { FaqClient } from "./faq-client";
 
 // ─── Data Fetching ───────────────────────────────────────────────────────
@@ -50,7 +51,12 @@ const categoryColors: Record<string, string> = {
 // ─── Page Component ──────────────────────────────────────────────────────
 
 export default async function FaqPage() {
-  const faqs = await getFaqs();
+  const [faqs, companyPhone, companyEmail, whatsappNumber] = await Promise.all([
+    getFaqs(),
+    getSetting("company_phone", COMPANY_PHONE),
+    getSetting("company_email", COMPANY_EMAIL),
+    getSetting("whatsapp_number", WHATSAPP_NUMBER),
+  ]);
 
   const serializedFaqs = faqs.map((faq) => ({
     id: faq.id,
@@ -123,7 +129,7 @@ export default async function FaqPage() {
               out via phone, email, or WhatsApp.
             </p>
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <a href={`tel:${COMPANY_PHONE.replace(/\s/g, "")}`}>
+              <a href={`tel:${(companyPhone || COMPANY_PHONE).replace(/\s/g, "")}`}>
                 <button className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3 text-base font-medium text-primary hover:bg-white/90 transition-colors">
                   <svg
                     className="h-5 w-5"
@@ -142,7 +148,7 @@ export default async function FaqPage() {
                 </button>
               </a>
               <a
-                href={`mailto:${COMPANY_EMAIL}`}
+                href={`mailto:${companyEmail || COMPANY_EMAIL}`}
                 className="inline-flex items-center gap-2 rounded-full border border-white/30 px-8 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
               >
                 <svg
@@ -161,7 +167,7 @@ export default async function FaqPage() {
                 Email Us
               </a>
               <a
-                href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent("Hi! I have a question about your cleaning services.")}`}
+                href={`https://wa.me/${whatsappNumber || WHATSAPP_NUMBER}?text=${encodeURIComponent("Hi! I have a question about your cleaning services.")}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border border-white/30 px-8 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"

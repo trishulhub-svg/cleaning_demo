@@ -184,7 +184,7 @@ export function SettingsPageClient() {
   }
 
   async function saveCompanySettings() {
-    const keys = ["company_name", "company_email", "company_phone", "company_address", "whatsapp_number"]
+    const keys = ["company_name", "company_email", "company_phone", "company_address", "whatsapp_number", "average_rating", "review_count", "social_facebook", "social_instagram", "social_twitter"]
     const updates: Record<string, string> = {}
 
     for (const k of keys) {
@@ -457,6 +457,72 @@ export function SettingsPageClient() {
                   onChange={(e) => handleEdit("company_address", e.target.value)}
                 />
               </div>
+
+              <Separator className="my-2" />
+              <p className="text-sm font-medium text-muted-foreground">Home Page Display</p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="average_rating">Average Rating</Label>
+                  <Input
+                    id="average_rating"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="5"
+                    placeholder="e.g. 4.9"
+                    value={editValues["average_rating"] ?? ""}
+                    onChange={(e) => handleEdit("average_rating", e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Leave empty to auto-calculate from reviews</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="review_count">Review Count</Label>
+                  <Input
+                    id="review_count"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 2000"
+                    value={editValues["review_count"] ?? ""}
+                    onChange={(e) => handleEdit("review_count", e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Displayed as &quot;X+ reviews&quot; on the home page</p>
+                </div>
+              </div>
+
+              <Separator className="my-2" />
+              <p className="text-sm font-medium text-muted-foreground">Social Media Links</p>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="social_facebook">Facebook URL</Label>
+                  <Input
+                    id="social_facebook"
+                    placeholder="https://facebook.com/..."
+                    value={editValues["social_facebook"] ?? ""}
+                    onChange={(e) => handleEdit("social_facebook", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="social_instagram">Instagram URL</Label>
+                  <Input
+                    id="social_instagram"
+                    placeholder="https://instagram.com/..."
+                    value={editValues["social_instagram"] ?? ""}
+                    onChange={(e) => handleEdit("social_instagram", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="social_twitter">Twitter/X URL</Label>
+                  <Input
+                    id="social_twitter"
+                    placeholder="https://twitter.com/..."
+                    value={editValues["social_twitter"] ?? ""}
+                    onChange={(e) => handleEdit("social_twitter", e.target.value)}
+                  />
+                </div>
+              </div>
+
               <Button onClick={() => initiateSave(saveCompanySettings)} disabled={saving === "save"}>
                 {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                 Save Company Info

@@ -26,7 +26,19 @@ import { Separator } from "@/components/ui/separator";
 import { APP_NAME, NAV_LINKS, COMPANY_PHONE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-export function SiteHeader() {
+export interface SiteSettings {
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  companyAddress: string;
+  whatsappNumber: string;
+}
+
+interface SiteHeaderProps {
+  settings: SiteSettings;
+}
+
+export function SiteHeader({ settings }: SiteHeaderProps) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const [scrolled, setScrolled] = React.useState(false);
@@ -91,6 +103,9 @@ export function SiteHeader() {
     }
   };
 
+  const displayAppName = settings?.companyName || APP_NAME;
+  const displayPhone = settings?.companyPhone || COMPANY_PHONE;
+
   return (
     <header
       className={cn(
@@ -107,7 +122,7 @@ export function SiteHeader() {
             <Leaf className="h-5 w-5" />
           </div>
           <span className="text-lg font-bold text-foreground tracking-tight">
-            {APP_NAME}
+            {displayAppName}
           </span>
         </Link>
 
@@ -127,11 +142,11 @@ export function SiteHeader() {
         {/* Desktop Right Side */}
         <div className="hidden items-center gap-2 lg:flex">
           <a
-            href={`tel:${COMPANY_PHONE.replace(/\s/g, "")}`}
+            href={`tel:${displayPhone.replace(/\s/g, "")}`}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
           >
             <Phone className="h-4 w-4" />
-            <span className="hidden xl:inline">{COMPANY_PHONE}</span>
+            <span className="hidden xl:inline">{displayPhone}</span>
           </a>
 
           {status === "loading" ? (
@@ -275,7 +290,7 @@ export function SiteHeader() {
         {/* Mobile Menu */}
         <div className="flex items-center gap-2 md:hidden">
           <Button asChild variant="ghost" size="icon">
-            <a href={`tel:${COMPANY_PHONE.replace(/\s/g, "")}`}>
+            <a href={`tel:${displayPhone.replace(/\s/g, "")}`}>
               <Phone className="h-5 w-5" />
               <span className="sr-only">Call us</span>
             </a>
@@ -291,7 +306,7 @@ export function SiteHeader() {
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2">
                   <Leaf className="h-5 w-5 text-primary" />
-                  {APP_NAME}
+                  {displayAppName}
                 </SheetTitle>
               </SheetHeader>
               <div className="flex flex-col gap-1 px-4 pt-4">
