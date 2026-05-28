@@ -50,12 +50,18 @@ export default async function RootLayout({
     companyPhone,
     companyAddress,
     whatsappNumber,
+    socialFacebook,
+    socialInstagram,
+    socialTwitter,
   ] = await Promise.all([
     getSetting("company_name", "GreenLeaf Cleaning"),
     getSetting("company_email", "hello@greenleafcleaning.co.uk"),
     getSetting("company_phone", "07700 000 000"),
     getSetting("company_address", "123 Green Lane, London, EC1A 1BB"),
     getSetting("whatsapp_number", "447700000000"),
+    getSetting("social_facebook", ""),
+    getSetting("social_instagram", ""),
+    getSetting("social_twitter", ""),
   ]);
 
   const siteSettings = {
@@ -64,6 +70,9 @@ export default async function RootLayout({
     companyPhone,
     companyAddress,
     whatsappNumber,
+    socialFacebook,
+    socialInstagram,
+    socialTwitter,
   };
 
   return (

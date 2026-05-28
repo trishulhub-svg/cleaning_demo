@@ -36,6 +36,26 @@ interface SiteFooterProps {
   settings: SiteSettings;
 }
 
+/** Strip non-digit characters from a phone number for WhatsApp URL */
+function sanitizeWhatsAppNumber(raw: string): string {
+  return raw.replace(/[^0-9]/g, "");
+}
+
+/** Only show the social link if a valid URL is configured */
+function getSocialUrl(url: string | undefined, fallbackPrefix: string): string | null {
+  if (!url || url.trim() === "") return null;
+  const trimmed = url.trim();
+  // If it's already a full URL, use it directly
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  // If it looks like a username/handle, build the URL
+  if (trimmed.length > 0) {
+    return `${fallbackPrefix}${trimmed}`;
+  }
+  return null;
+}
+
 export function SiteFooter({ settings }: SiteFooterProps) {
   const pathname = usePathname();
 
@@ -48,7 +68,15 @@ export function SiteFooter({ settings }: SiteFooterProps) {
   const displayEmail = settings?.companyEmail || COMPANY_EMAIL;
   const displayPhone = settings?.companyPhone || COMPANY_PHONE;
   const displayAddress = settings?.companyAddress || COMPANY_ADDRESS;
-  const displayWhatsapp = settings?.whatsappNumber || WHATSAPP_NUMBER;
+  const whatsappRaw = settings?.whatsappNumber || WHATSAPP_NUMBER;
+  const whatsappClean = sanitizeWhatsAppNumber(whatsappRaw);
+
+  // Build social links from settings — hide icon if no URL configured
+  const facebookUrl = getSocialUrl(settings?.socialFacebook, "https://facebook.com/");
+  const instagramUrl = getSocialUrl(settings?.socialInstagram, "https://instagram.com/");
+  const twitterUrl = getSocialUrl(settings?.socialTwitter, "https://twitter.com/");
+
+  const hasAnySocial = facebookUrl || instagramUrl || twitterUrl;
 
   return (
     <footer className="bg-primary text-primary-foreground">
@@ -68,35 +96,43 @@ export function SiteFooter({ settings }: SiteFooterProps) {
               offices across London. Trusted by thousands of happy customers
               since 2020.
             </p>
-            <div className="flex items-center gap-3 pt-2">
-              <a
-                href={`https://facebook.com/${settings?.whatsappNumber ? "" : ""}`}
-                aria-label="Facebook"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Facebook className="h-4 w-4" />
-              </a>
-              <a
-                href="https://instagram.com/"
-                aria-label="Instagram"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Instagram className="h-4 w-4" />
-              </a>
-              <a
-                href="https://twitter.com/"
-                aria-label="Twitter"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Twitter className="h-4 w-4" />
-              </a>
-            </div>
+            {hasAnySocial && (
+              <div className="flex items-center gap-3 pt-2">
+                {facebookUrl && (
+                  <a
+                    href={facebookUrl}
+                    aria-label="Facebook"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Facebook className="h-4 w-4" />
+                  </a>
+                )}
+                {instagramUrl && (
+                  <a
+                    href={instagramUrl}
+                    aria-label="Instagram"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Instagram className="h-4 w-4" />
+                  </a>
+                )}
+                {twitterUrl && (
+                  <a
+                    href={twitterUrl}
+                    aria-label="Twitter"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Twitter className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Links */}
@@ -175,15 +211,17 @@ export function SiteFooter({ settings }: SiteFooterProps) {
               </li>
             </ul>
             <Separator className="bg-white/20" />
-            <a
-              href={`https://wa.me/${displayWhatsapp}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/30"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Chat on WhatsApp
-            </a>
+            {whatsappClean && (
+              <a
+                href={`https://wa.me/${whatsappClean}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/30"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Chat on WhatsApp
+              </a>
+            )}
           </div>
         </div>
       </div>

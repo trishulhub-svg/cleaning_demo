@@ -32,6 +32,9 @@ export interface SiteSettings {
   companyPhone: string;
   companyAddress: string;
   whatsappNumber: string;
+  socialFacebook?: string;
+  socialInstagram?: string;
+  socialTwitter?: string;
 }
 
 interface SiteHeaderProps {

@@ -7,8 +7,17 @@ interface FloatingWhatsAppProps {
   whatsappNumber?: string;
 }
 
+/** Strip non-digit characters from a phone number for WhatsApp URL */
+function sanitizeWhatsAppNumber(raw: string): string {
+  return raw.replace(/[^0-9]/g, "");
+}
+
 export function FloatingWhatsApp({ whatsappNumber }: FloatingWhatsAppProps) {
-  const number = whatsappNumber || WHATSAPP_NUMBER;
+  const raw = whatsappNumber || WHATSAPP_NUMBER;
+  const number = sanitizeWhatsAppNumber(raw);
+
+  if (!number) return null;
+
   return (
     <a
       href={`https://wa.me/${number}?text=${encodeURIComponent("Hi! I'd like to book a cleaning service.")}`}

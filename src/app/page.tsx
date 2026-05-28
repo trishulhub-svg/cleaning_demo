@@ -174,7 +174,7 @@ export default async function HomePage() {
   const displayReviewCount = siteSettings.reviewCountSetting || 2000;
   const displayAppName = siteSettings.companyName || APP_NAME;
   const displayPhone = siteSettings.companyPhone || COMPANY_PHONE;
-  const displayWhatsapp = siteSettings.whatsappNumber || WHATSAPP_NUMBER;
+  const displayWhatsapp = (siteSettings.whatsappNumber || WHATSAPP_NUMBER).replace(/[^0-9]/g, "");
 
   // Generate star icons for the hero rating display
   const fullStars = Math.floor(displayRating);

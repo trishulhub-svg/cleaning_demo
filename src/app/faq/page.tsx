@@ -58,6 +58,8 @@ export default async function FaqPage() {
     getSetting("whatsapp_number", WHATSAPP_NUMBER),
   ]);
 
+  const cleanWhatsapp = (whatsappNumber || WHATSAPP_NUMBER).replace(/[^0-9]/g, "");
+
   const serializedFaqs = faqs.map((faq) => ({
     id: faq.id,
     question: faq.question,
@@ -167,7 +169,7 @@ export default async function FaqPage() {
                 Email Us
               </a>
               <a
-                href={`https://wa.me/${whatsappNumber || WHATSAPP_NUMBER}?text=${encodeURIComponent("Hi! I have a question about your cleaning services.")}`}
+                href={`https://wa.me/${cleanWhatsapp}?text=${encodeURIComponent("Hi! I have a question about your cleaning services.")}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border border-white/30 px-8 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
