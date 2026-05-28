@@ -187,6 +187,108 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Admin deactivation is not implemented. Use direct database management." }, { status: 400 });
     }
 
+    if (action === "update") {
+      const { name, email, role } = body;
+
+      // Verify the super_admin's current password
+      if (!currentPassword) {
+        return NextResponse.json(
+          { error: "Current password is required." },
+          { status: 400 }
+        );
+      }
+
+      // Fetch the requesting admin's full record (including password hash)
+      const requestingAdmin = await db.admin.findUnique({ where: { id: admin.id } });
+      if (!requestingAdmin || !requestingAdmin.password) {
+        return NextResponse.json(
+          { error: "Failed to verify identity." },
+          { status: 500 }
+        );
+      }
+
+      const passwordValid = await verifyPassword(currentPassword, requestingAdmin.password);
+      if (!passwordValid) {
+        return NextResponse.json(
+          { error: "Current password is incorrect." },
+          { status: 401 }
+        );
+      }
+
+      // Validate required fields
+      if (!name || typeof name !== "string") {
+        return NextResponse.json(
+          { error: "Name is required." },
+          { status: 400 }
+        );
+      }
+      if (!email || typeof email !== "string") {
+        return NextResponse.json(
+          { error: "Email is required." },
+          { status: 400 }
+        );
+      }
+
+      // Check email uniqueness if being changed
+      if (email.toLowerCase().trim() !== targetAdmin.email.toLowerCase()) {
+        const existingEmail = await db.admin.findUnique({
+          where: { email: email.toLowerCase().trim() },
+        });
+        if (existingEmail) {
+          return NextResponse.json(
+            { error: "An admin with this email already exists." },
+            { status: 409 }
+          );
+        }
+      }
+
+      // Validate role if provided
+      const validRoles = ["admin", "super_admin"];
+      const updateRole = role || targetAdmin.role;
+      if (!validRoles.includes(updateRole)) {
+        return NextResponse.json(
+          { error: "Invalid role. Must be 'admin' or 'super_admin'." },
+          { status: 400 }
+        );
+      }
+
+      // Update the admin record
+      const updatedAdmin = await db.admin.update({
+        where: { id: adminId },
+        data: {
+          name,
+          email: email.toLowerCase().trim(),
+          role: updateRole,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Log the activity
+      await logActivity(
+        {
+          action: "admin_updated",
+          category: "admin_management",
+          targetType: "user",
+          targetId: adminId,
+          targetName: targetAdmin.name,
+          details: {
+            changes: { name, email, role: updateRole },
+          },
+        },
+        { userType: "admin", id: admin.id, name: admin.name, email: admin.email, role: admin.role }
+      );
+
+      return NextResponse.json({
+        success: true,
+        admin: {
+          id: updatedAdmin.id,
+          name: updatedAdmin.name,
+          email: updatedAdmin.email,
+          role: updatedAdmin.role,
+        },
+      });
+    }
+
     if (action === "resetPassword") {
       const newPassword = body.newPassword;
       if (!newPassword || newPassword.length < 8) {

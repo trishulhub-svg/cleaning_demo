@@ -6,10 +6,13 @@ import {
   Pencil,
   Power,
   KeyRound,
+  Shield,
   Search,
   Check,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
+import { showApiError } from "@/lib/error-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +84,12 @@ export default function StaffPage() {
     password: string;
     name: string;
   } | null>(null);
+
+  // Admin editing
+  const [editAdminModal, setEditAdminModal] = useState<AdminMember | null>(null);
+  const [adminFormData, setAdminFormData] = useState({ name: "", email: "", role: "admin" });
+  const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -213,6 +222,75 @@ export default function StaffPage() {
     }
   };
 
+  const openEditAdminModal = (admin: AdminMember) => {
+    setAdminFormData({
+      name: admin.name,
+      email: admin.email,
+      role: admin.role,
+    });
+    setEditAdminModal(admin);
+  };
+
+  const handleEditAdmin = async () => {
+    if (!editAdminModal || !adminFormData.name || !adminFormData.email || !adminCurrentPassword) return;
+    setAdminSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/admins", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminId: editAdminModal.id,
+          action: "update",
+          ...adminFormData,
+          currentPassword: adminCurrentPassword,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Manager updated successfully.");
+        setEditAdminModal(null);
+        setAdminCurrentPassword("");
+        fetchStaff();
+      } else {
+        showApiError({ res, fallback: "Failed to update manager." });
+      }
+    } catch (err) {
+      console.error("Failed to update admin", err);
+      toast.error("An unexpected error occurred.");
+    } finally {
+      setAdminSubmitting(false);
+    }
+  };
+
+  const handleResetAdminPassword = async (adminId: number, adminName: string) => {
+    if (!window.confirm(`Are you sure you want to reset the password for ${adminName}? A new temporary password will be generated.`)) {
+      return;
+    }
+    const newPassword = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => String.fromCharCode(97 + b % 26)).join('') + Array.from(crypto.getRandomValues(new Uint8Array(2)), b => String(b % 10)).join('');
+    try {
+      const res = await fetch("/api/admin/admins", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminId,
+          action: "resetPassword",
+          newPassword,
+        }),
+      });
+      if (res.ok) {
+        setTempPasswordDisplay({
+          open: true,
+          password: newPassword,
+          name: adminName,
+        });
+      } else {
+        showApiError({ res, fallback: "Failed to reset password." });
+      }
+    } catch (err) {
+      console.error("Failed to reset admin password", err);
+      toast.error("An unexpected error occurred.");
+    }
+  };
+
   const openEditModal = (member: StaffMember) => {
     setFormData({
       name: member.name,
@@ -278,6 +356,7 @@ export default function StaffPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead className="hidden sm:table-cell">Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,6 +378,28 @@ export default function StaffPage() {
                       </TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-gray-500">
                         {new Date(admin.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openEditAdminModal(admin)}
+                            className="h-8 w-8"
+                            title="Edit Manager"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleResetAdminPassword(admin.id, admin.name)}
+                            className="h-8 w-8"
+                            title="Reset Password"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -662,6 +763,48 @@ export default function StaffPage() {
               onClick={() => setTempPasswordDisplay(null)}
             >
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Admin Modal */}
+      <Dialog open={!!editAdminModal} onOpenChange={(open) => { if (!open) { setEditAdminModal(null); setAdminCurrentPassword(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Manager</DialogTitle>
+            <DialogDescription>
+              Update manager details. Your current password is required to confirm changes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input value={adminFormData.name} onChange={(e) => setAdminFormData(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={adminFormData.email} onChange={(e) => setAdminFormData(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={adminFormData.role} onValueChange={(v) => setAdminFormData(f => ({ ...f, role: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="super_admin">Super Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Your Current Password</Label>
+              <Input type="password" value={adminCurrentPassword} onChange={(e) => setAdminCurrentPassword(e.target.value)} placeholder="Enter your password to confirm" />
+              <p className="text-xs text-gray-500">Required to verify your identity before making changes.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditAdminModal(null); setAdminCurrentPassword(""); }}>Cancel</Button>
+            <Button onClick={handleEditAdmin} disabled={adminSubmitting || !adminFormData.name || !adminFormData.email || !adminCurrentPassword}>
+              {adminSubmitting ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
