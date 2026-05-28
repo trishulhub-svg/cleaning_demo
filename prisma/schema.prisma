@@ -124,7 +124,7 @@ model Booking {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime?
   paymentStatus      String    @default("pending") // pending, paid, cash_on_service
-  invoiceId          Int?      // FK to Invoice (one-to-one: one booking has one invoice)
+  invoiceId          Int?      @unique // FK to Invoice (one-to-one: one booking has one invoice)
   bookingStatus      String    @default("pending") // pending, confirmed, in_progress, completed, cancelled, cash_pending
   qrCompletionCode   String?
   qrImageData        String?
@@ -141,6 +141,7 @@ model Booking {
   service          Service            @relation(fields: [serviceId], references: [id])
   assignedStaff    Staff?             @relation("StaffAssignment", fields: [assignedStaffId], references: [id])
   assignment       BookingAssignment?
+  invoice          Invoice?           @relation(fields: [invoiceId], references: [id])
   payments         Payment[]
   refunds          Refund[]
   cancellationLogs CancellationLog[]
@@ -168,8 +169,9 @@ model Invoice {
   createdAt     DateTime  @default(now())
   paidAt        DateTime?
 
-  // NOTE: No relation to User or Booking — both userId and bookingId are plain ints.
-  // The Booking model has invoiceId for one-to-one lookup from Booking side.
+  // NOTE: No relation to User — userId is a plain int.
+  // Booking relation via invoiceId (one-to-one: one booking has one invoice)
+  booking Booking?
   payments Payment[]
   refunds  Refund[]
   invoiceItems InvoiceItem[]
