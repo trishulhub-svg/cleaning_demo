@@ -190,6 +190,7 @@ export default function LogsPage() {
     try {
       // jspdf v4+ is ESM-only — must use dynamic import
       const { default: jsPDF } = await import("jspdf");
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -223,7 +224,7 @@ export default function LogsPage() {
         log.details ? (log.details.length > 60 ? log.details.slice(0, 57) + "..." : log.details) : "-",
       ]);
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 35,
         head: [["Timestamp", "Actor", "Action", "Category", "Severity", "Target", "Details"]],
         body: tableBody,

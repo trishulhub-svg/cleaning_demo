@@ -14,7 +14,7 @@ export async function createPdf(
 ) {
   // jspdf v4+ is ESM-only — must use dynamic import
   const { default: jsPDF } = await import("jspdf");
-  await import("jspdf-autotable");
+  const autoTable = (await import("jspdf-autotable")).default;
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -50,7 +50,7 @@ export async function createPdf(
   // Reset text color
   doc.setTextColor(0, 0, 0);
 
-  return { doc, pageWidth, pageHeight, margin };
+  return { doc, pageWidth, pageHeight, margin, autoTable };
 }
 
 /**
@@ -127,8 +127,7 @@ export async function captureElementToPdf(
   margin: number
 ): Promise<number> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const html2canvas = require("html2canvas");
+    const html2canvas = (await import("html2canvas")).default;
     const el = document.getElementById(elementId);
     if (!el) return y;
 

@@ -476,7 +476,7 @@ function BookingsPageInner() {
     try {
       // jspdf v4+ is ESM-only — must use dynamic import
       const { default: jsPDF } = await import("jspdf");
-      await import("jspdf-autotable");
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -511,7 +511,7 @@ function BookingsPageInner() {
         b.assignedStaff?.name || "Unassigned",
       ]);
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 35,
         head: [["Booking ID", "Customer", "Email", "Service", "Date", "Time", "Address", "Price", "Status", "Payment", "Staff"]],
         body: tableBody,

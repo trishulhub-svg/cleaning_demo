@@ -129,7 +129,7 @@ export default function ReportsPage() {
     try {
       // jspdf v4+ is ESM-only — must use dynamic import
       const { default: jsPDF } = await import("jspdf");
-      await import("jspdf-autotable");
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -183,7 +183,7 @@ export default function ReportsPage() {
       // ── Summary Cards Table ──
       addHeading("Revenue Summary");
       ensureSpace(30);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Metric", "Value"]],
         body: [
@@ -202,7 +202,7 @@ export default function ReportsPage() {
       // ── Booking Status Breakdown ──
       addHeading("Booking Status Breakdown");
       ensureSpace(20);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Status", "Count", "Revenue", "%"]],
         body: statusBreakdown.map((s) => [
@@ -221,7 +221,7 @@ export default function ReportsPage() {
       addHeading("Revenue by Payment Method");
       ensureSpace(20);
       const totalRev = paymentMethods.reduce((a, b) => a + b.revenue, 0);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Method", "Revenue", "Transactions", "%"]],
         body: paymentMethods.map((pm) => [
@@ -239,7 +239,7 @@ export default function ReportsPage() {
       // ── Top Services Table ──
       addHeading("Top Services by Revenue");
       ensureSpace(20);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["#", "Service", "Revenue", "Bookings"]],
         body: topServices.map((s, idx) => [
@@ -257,7 +257,7 @@ export default function ReportsPage() {
       // ── Refund Summary ──
       addHeading("Refund Summary");
       ensureSpace(20);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Metric", "Value"]],
         body: [
@@ -276,8 +276,7 @@ export default function ReportsPage() {
       // ── Daily Revenue Chart (capture via html2canvas) ──
       if (dailyRevenue.length > 0) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const html2canvas = require("html2canvas");
+          const html2canvas = (await import("html2canvas")).default;
           const el = document.getElementById("revenue-chart-capture");
           if (el) {
             ensureSpace(80);
