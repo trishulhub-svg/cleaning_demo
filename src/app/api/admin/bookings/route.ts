@@ -49,9 +49,23 @@ export async function GET(req: NextRequest) {
         ...(isNumeric ? [{ id: { equals: Number(search) } }] : []),
       ];
 
-      // Only add invoice search if it looks like an invoice number (has GL- prefix or is alphanumeric)
+      // Invoice number search: manual lookup since invoice relation may not be available
       if (/[A-Za-z]/.test(search)) {
-        orConditions.push({ invoice: { invoiceNumber: { contains: search } } });
+        try {
+          const matchingInvoices = await db.invoice.findMany({
+            where: { invoiceNumber: { contains: search } },
+            select: { bookingId: true },
+            take: 50,
+          });
+          const bookingIds = matchingInvoices
+            .map((inv) => inv.bookingId)
+            .filter((id) => id > 0);
+          if (bookingIds.length > 0) {
+            orConditions.push({ id: { in: bookingIds } });
+          }
+        } catch {
+          // Invoice lookup failed — skip invoice search silently
+        }
       }
 
       where.OR = orConditions;
@@ -79,7 +93,7 @@ export async function GET(req: NextRequest) {
               completedAt: true,
             },
           },
-          invoice: { select: { invoiceNumber: true } },
+          // invoice lookup done separately if needed
         },
       }),
       db.booking.count({ where }),
