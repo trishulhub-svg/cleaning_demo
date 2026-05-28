@@ -364,14 +364,13 @@ export default function ReportsPage() {
     }
   };
 
-  // ── Visual PDF Export ──
+  // ── Visual PDF Export (native jsPDF charts — no html2canvas) ──
   const handleExportVisualPdf = async () => {
     if (loading) return;
     setExporting(true);
     try {
       const { default: jsPDF } = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
-      const html2canvas = (await import("html2canvas")).default;
 
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -399,12 +398,8 @@ export default function ReportsPage() {
 
       let y = 35;
 
-      // Helper to add section heading
       const addHeading = (title: string) => {
-        if (y + 15 > pageHeight - 15) {
-          doc.addPage();
-          y = 15;
-        }
+        if (y + 15 > pageHeight - 15) { doc.addPage(); y = 15; }
         doc.setFillColor(240, 253, 244);
         doc.rect(margin, y - 4, usableWidth, 8, "F");
         doc.setFontSize(11);
@@ -416,127 +411,241 @@ export default function ReportsPage() {
         y += 10;
       };
 
-      // Helper to ensure page space
       const ensureSpace = (needed: number) => {
-        if (y + needed > pageHeight - 15) {
-          doc.addPage();
-          y = 15;
-        }
+        if (y + needed > pageHeight - 15) { doc.addPage(); y = 15; }
       };
 
-      // ── Revenue Summary: 4 colored stat boxes ──
+      // ══════════════════════════════════════════
+      // 1. Revenue Summary — 4 colored stat boxes
+      // ══════════════════════════════════════════
       addHeading("Revenue Summary");
       ensureSpace(30);
 
       const statBoxes = [
-        { label: "Total Revenue", value: `${CURRENCY}${(revenue?.total ?? 0).toFixed(2)}`, fill: [34, 197, 94] as const },
-        { label: "This Month", value: `${CURRENCY}${(revenue?.thisMonth ?? 0).toFixed(2)}`, fill: [59, 130, 246] as const },
-        { label: "This Week", value: `${CURRENCY}${(revenue?.thisWeek ?? 0).toFixed(2)}`, fill: [139, 92, 246] as const },
-        { label: "Today", value: `${CURRENCY}${(revenue?.today ?? 0).toFixed(2)}`, fill: [249, 115, 22] as const },
+        { label: "Total Revenue", value: `${CURRENCY}${(revenue?.total ?? 0).toFixed(2)}`, fill: [34, 197, 94] },
+        { label: "This Month", value: `${CURRENCY}${(revenue?.thisMonth ?? 0).toFixed(2)}`, fill: [59, 130, 246] },
+        { label: "This Week", value: `${CURRENCY}${(revenue?.thisWeek ?? 0).toFixed(2)}`, fill: [139, 92, 246] },
+        { label: "Today", value: `${CURRENCY}${(revenue?.today ?? 0).toFixed(2)}`, fill: [249, 115, 22] },
       ];
-
-      const boxWidth = (usableWidth - 9) / 4; // 3mm gap between 4 boxes
+      const boxWidth = (usableWidth - 9) / 4;
       const boxHeight = 22;
-
       statBoxes.forEach((box, i) => {
         const boxX = margin + i * (boxWidth + 3);
         doc.setFillColor(box.fill[0], box.fill[1], box.fill[2]);
         doc.roundedRect(boxX, y, boxWidth, boxHeight, 2, 2, "F");
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7); doc.setFont("helvetica", "normal");
         doc.text(box.label, boxX + 3, y + 7);
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
         doc.text(box.value, boxX + 3, y + 16);
       });
-
-      doc.setTextColor(0, 0, 0);
-      doc.setFont("helvetica", "normal");
+      doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal");
       y += boxHeight + 10;
 
-      // ── Daily Revenue BarChart ──
+      // ══════════════════════════════════════════
+      // 2. Daily Revenue — native Bar Chart
+      // ══════════════════════════════════════════
       if (dailyRevenue.length > 0) {
-        const el = document.getElementById("chart-daily-revenue");
-        if (el) {
-          ensureSpace(90);
-          addHeading("Daily Revenue (Last 30 Days)");
-          const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false });
-          const imgData = canvas.toDataURL("image/png");
-          const imgWidth = usableWidth;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          if (y + imgHeight > pageHeight - 15) {
-            doc.addPage();
-            y = 15;
-          }
-          doc.addImage(imgData, "PNG", margin, y, imgWidth, imgHeight);
-          y += imgHeight + 8;
+        ensureSpace(75);
+        addHeading("Daily Revenue (Last 30 Days)");
+
+        const chartH = 55;
+        const chartLeft = margin + 18;
+        const chartW = usableWidth - 18;
+        const maxRev = Math.max(...dailyRevenue.map((d) => d._sum.totalPrice), 1);
+
+        // Y-axis grid lines & labels
+        doc.setDrawColor(230, 230, 230);
+        doc.setLineWidth(0.1);
+        for (let i = 0; i <= 4; i++) {
+          const gy = y + chartH - (chartH / 4) * i;
+          doc.line(chartLeft, gy, chartLeft + chartW, gy);
+          doc.setFontSize(6); doc.setTextColor(160, 160, 160);
+          doc.text(`${CURRENCY}${((maxRev / 4) * i).toFixed(0)}`, chartLeft - 2, gy + 2, { align: "right" });
         }
+
+        // Bars
+        const barSpace = chartW / dailyRevenue.length;
+        const barW = Math.max(barSpace * 0.6, 1.5);
+        dailyRevenue.forEach((d, i) => {
+          const barH = Math.max((d._sum.totalPrice / maxRev) * chartH, 0.5);
+          const bx = chartLeft + i * barSpace + (barSpace - barW) / 2;
+          const by = y + chartH - barH;
+          doc.setFillColor(34, 197, 94);
+          doc.rect(bx, by, barW, barH, "F");
+          // X label every ~5 days
+          if (i % 5 === 0 || i === dailyRevenue.length - 1) {
+            doc.setFontSize(6); doc.setTextColor(150, 150, 150);
+            doc.text(d.bookingDate.slice(8), bx + barW / 2, y + chartH + 4, { align: "center" });
+          }
+        });
+
+        // Axis lines
+        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.3);
+        doc.line(chartLeft, y, chartLeft, y + chartH);
+        doc.line(chartLeft, y + chartH, chartLeft + chartW, y + chartH);
+
+        y += chartH + 12;
       }
 
-      // ── Payment Methods PieChart ──
+      // ══════════════════════════════════════════
+      // 3. Payment Methods — native Donut Chart
+      // ══════════════════════════════════════════
       if (paymentMethods.length > 0) {
-        const el = document.getElementById("chart-payment-methods");
-        if (el) {
-          ensureSpace(120);
-          addHeading("Revenue by Payment Method");
-          const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false });
-          const imgData = canvas.toDataURL("image/png");
-          const imgWidth = usableWidth;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          if (y + imgHeight > pageHeight - 15) {
-            doc.addPage();
-            y = 15;
+        ensureSpace(70);
+        addHeading("Revenue by Payment Method");
+
+        const totalPayRev = paymentMethods.reduce((a, b) => a + b.revenue, 0);
+        const donutCX = margin + 25;
+        const donutCY = y + 25;
+        const donutR = 22;
+        const innerR = 11;
+        const pieColors: Record<string, [number, number, number]> = {
+          stripe: [34, 197, 94],
+          cash: [245, 158, 11],
+        };
+        const steps = 60;
+        let startAngle = -Math.PI / 2;
+
+        paymentMethods.forEach((pm) => {
+          if (pm.revenue <= 0) return;
+          const sliceAngle = (pm.revenue / totalPayRev) * Math.PI * 2;
+          const col = pieColors[pm.method] || [99, 102, 241];
+
+          // Draw slice as thin triangles (donut: skip inner circle)
+          for (let s = 0; s < steps; s++) {
+            const a1 = startAngle + (sliceAngle * s / steps);
+            const a2 = startAngle + (sliceAngle * (s + 1) / steps);
+            const ox1 = donutCX + donutR * Math.cos(a1);
+            const oy1 = donutCY + donutR * Math.sin(a1);
+            const ox2 = donutCX + donutR * Math.cos(a2);
+            const oy2 = donutCY + donutR * Math.sin(a2);
+            const ix1 = donutCX + innerR * Math.cos(a1);
+            const iy1 = donutCY + innerR * Math.sin(a1);
+            const ix2 = donutCX + innerR * Math.cos(a2);
+            const iy2 = donutCY + innerR * Math.sin(a2);
+
+            doc.setFillColor(col[0], col[1], col[2]);
+            // Outer quad as 2 triangles
+            doc.triangle(ox1, oy1, ox2, oy2, ix2, iy2, "F");
+            doc.triangle(ox1, oy1, ix2, iy2, ix1, iy1, "F");
           }
-          doc.addImage(imgData, "PNG", margin, y, imgWidth, imgHeight);
-          y += imgHeight + 8;
-        }
+          startAngle += sliceAngle;
+        });
+
+        // Center label
+        doc.setFillColor(255, 255, 255);
+        doc.circle(donutCX, donutCY, innerR - 0.5, "F");
+        doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+        doc.text("Total", donutCX, donutCY - 1, { align: "center" });
+        doc.setFontSize(9); doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold");
+        doc.text(`${CURRENCY}${totalPayRev.toFixed(0)}`, donutCX, donutCY + 5, { align: "center" });
+        doc.setFont("helvetica", "normal");
+
+        // Legend — right side
+        const legendX = margin + 55;
+        let legendY = y + 8;
+        paymentMethods.forEach((pm) => {
+          const col = pieColors[pm.method] || [99, 102, 241];
+          const pct = totalPayRev > 0 ? ((pm.revenue / totalPayRev) * 100).toFixed(1) : "0";
+          const label = pm.method === "stripe" ? "Card (Stripe)" : pm.method === "cash" ? "Cash" : pm.method;
+
+          doc.setFillColor(col[0], col[1], col[2]);
+          doc.roundedRect(legendX, legendY, 5, 5, 1, 1, "F");
+          doc.setFontSize(8); doc.setTextColor(50, 50, 50);
+          doc.text(`${label}`, legendX + 8, legendY + 4);
+          doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+          doc.text(`${CURRENCY}${pm.revenue.toFixed(2)}  (${pct}%)  ${pm.count} txns`, legendX + 8, legendY + 9);
+          legendY += 15;
+        });
+
+        y += 55;
       }
 
-      // ── Booking Status Summary (formatted text blocks, not chart) ──
+      // ══════════════════════════════════════════
+      // 4. Booking Status — horizontal bar summary
+      // ══════════════════════════════════════════
       if (statusBreakdown.length > 0) {
         addHeading("Booking Status Breakdown");
         ensureSpace(15);
+        const maxCount = Math.max(...statusBreakdown.map((s) => s.count), 1);
 
         statusBreakdown.forEach((s) => {
+          ensureSpace(12);
           const pct = totalBookings > 0 ? ((s.count / totalBookings) * 100).toFixed(1) : "0";
           const statusLabel = s.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-          const line = `${statusLabel}: ${s.count} bookings (${pct}%) — Revenue: ${CURRENCY}${s.revenue.toFixed(2)}`;
 
-          ensureSpace(10);
+          // Background bar
           doc.setFillColor(245, 245, 245);
-          doc.roundedRect(margin, y, usableWidth, 8, 1.5, 1.5, "F");
-          doc.setFontSize(8);
+          doc.roundedRect(margin, y, usableWidth, 9, 1.5, 1.5, "F");
+
+          // Colored progress bar
+          const barW = Math.max((s.count / maxCount) * (usableWidth * 0.3), 2);
+          const statusColors: Record<string, [number, number, number]> = {
+            pending: [245, 158, 11], confirmed: [59, 130, 246], completed: [34, 197, 94],
+            cancelled: [239, 68, 68], cash_pending: [234, 179, 8], in_progress: [99, 102, 241],
+          };
+          const col = statusColors[s.status] || [156, 163, 175];
+          doc.setFillColor(col[0], col[1], col[2]);
+          doc.roundedRect(margin, y, barW, 9, 1.5, 1.5, "F");
+
+          // Text
+          doc.setFontSize(8); doc.setTextColor(0, 0, 0);
           doc.setFont("helvetica", "bold");
-          doc.text(statusLabel + ":", margin + 3, y + 5.5);
-          const labelWidth = doc.getTextWidth(statusLabel + ":");
+          doc.text(`${statusLabel}`, margin + 3, y + 6);
           doc.setFont("helvetica", "normal");
-          doc.text(`${s.count} bookings (${pct}%) — Revenue: ${CURRENCY}${s.revenue.toFixed(2)}`, margin + 3 + labelWidth, y + 5.5);
-          y += 10;
+          doc.setTextColor(80, 80, 80);
+          doc.text(`${s.count} (${pct}%)  |  ${CURRENCY}${s.revenue.toFixed(2)}`, margin + barW + 4, y + 6);
+          y += 11;
         });
         y += 5;
       }
 
-      // ── Top Services horizontal BarChart ──
-      if (topServicesChartData.length > 0) {
-        const el = document.getElementById("chart-top-services");
-        if (el) {
-          ensureSpace(120);
-          addHeading("Top Services by Revenue");
-          const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false });
-          const imgData = canvas.toDataURL("image/png");
-          const imgWidth = usableWidth;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          if (y + imgHeight > pageHeight - 15) {
-            doc.addPage();
-            y = 15;
-          }
-          doc.addImage(imgData, "PNG", margin, y, imgWidth, imgHeight);
-          y += imgHeight + 8;
-        }
+      // ══════════════════════════════════════════
+      // 5. Top Services — horizontal bar chart
+      // ══════════════════════════════════════════
+      const topSvcs = topServices.slice(0, 10);
+      if (topSvcs.length > 0) {
+        ensureSpace(20 + topSvcs.length * 10);
+        addHeading("Top Services by Revenue");
+
+        const maxSvcRev = Math.max(...topSvcs.map((s) => s.revenue), 1);
+        const labelColW = 45;
+        const barAreaW = usableWidth - labelColW - 35;
+
+        topSvcs.forEach((svc, idx) => {
+          ensureSpace(10);
+          const barW = Math.max((svc.revenue / maxSvcRev) * barAreaW, 2);
+
+          // Rank number
+          doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+          doc.text(`${idx + 1}.`, margin, y + 5);
+
+          // Service name
+          doc.setFontSize(8); doc.setTextColor(50, 50, 50);
+          const truncName = svc.serviceName.length > 22 ? svc.serviceName.slice(0, 19) + "..." : svc.serviceName;
+          doc.text(truncName, margin + 6, y + 5);
+
+          // Background bar
+          doc.setFillColor(240, 240, 240);
+          doc.roundedRect(margin + labelColW, y + 0.5, barAreaW, 6, 1, 1, "F");
+
+          // Filled bar
+          doc.setFillColor(34, 197, 94);
+          doc.roundedRect(margin + labelColW, y + 0.5, barW, 6, 1, 1, "F");
+
+          // Revenue value
+          doc.setFontSize(7); doc.setTextColor(60, 60, 60);
+          doc.text(`${CURRENCY}${svc.revenue.toFixed(0)}`, margin + labelColW + barAreaW + 3, y + 5);
+
+          y += 9;
+        });
+        y += 5;
       }
 
-      // ── Refund Summary Table ──
+      // ══════════════════════════════════════════
+      // 6. Refund Summary Table
+      // ══════════════════════════════════════════
       addHeading("Refund Summary");
       ensureSpace(30);
       autoTable(doc, {
