@@ -186,7 +186,7 @@ export function ServicesClient({ services }: { services: ServiceData[] }) {
                     <div>
                       <span className="text-3xl font-bold text-primary">
                         {CURRENCY}
-                        {service.price.toFixed(0)}
+                        {service.price.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">

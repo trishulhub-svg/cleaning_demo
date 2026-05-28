@@ -12,15 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Clock,
-  BedDouble,
-  Bath,
   CheckCircle2,
   ChevronRight,
   Sparkles,
-  MapPin,
-  ArrowRight,
-  Search,
 } from "lucide-react";
 import { ServicesClient } from "./services-client";
 
@@ -39,12 +33,11 @@ async function getServices() {
 
 // ─── Icon Mapper ─────────────────────────────────────────────────────────
 
-function getServiceIcon(name: string) {
+function getServiceIcon(name: string): string {
   const lower = name.toLowerCase();
-  if (lower.includes("deep")) return Sparkles;
-  if (lower.includes("end") || lower.includes("tenancy")) return ArrowRight;
-  if (lower.includes("office") || lower.includes("commercial")) return MapPin;
-  return Sparkles;
+  if (lower.includes("end") || lower.includes("tenancy")) return "ArrowRight";
+  if (lower.includes("office") || lower.includes("commercial")) return "MapPin";
+  return "Sparkles";
 }
 
 // ─── Metadata ────────────────────────────────────────────────────────────
@@ -73,7 +66,7 @@ export default async function ServicesPage() {
     durationHours: s.durationHours,
     features: s.features,
     isFeatured: s.isFeatured,
-    icon: getServiceIcon(s.name).displayName,
+    icon: getServiceIcon(s.name),
   }));
 
   return (

@@ -9,6 +9,7 @@ import {
   EyeOff,
   Search,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,15 +135,17 @@ export default function ServicesPage() {
         body: JSON.stringify(formData),
       });
       if (res.ok) {
+        toast.success("Service created successfully");
         setAddModal(false);
         setFormData(emptyForm);
         fetchServices();
       } else {
-        const data = await res.json();
-        alert(data.error || "Failed to create service");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to create service");
       }
     } catch (err) {
       console.error("Failed to add service", err);
+      toast.error("Failed to create service");
     } finally {
       setSubmitting(false);
     }
@@ -152,7 +155,7 @@ export default function ServicesPage() {
     if (!editModal || !formData.name || !formData.description) return;
     setSubmitting(true);
     try {
-      await fetch("/api/admin/services", {
+      const res = await fetch("/api/admin/services", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -161,11 +164,18 @@ export default function ServicesPage() {
           ...formData,
         }),
       });
-      setEditModal(null);
-      setFormData(emptyForm);
-      fetchServices();
+      if (res.ok) {
+        toast.success("Service updated successfully");
+        setEditModal(null);
+        setFormData(emptyForm);
+        fetchServices();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update service");
+      }
     } catch (err) {
       console.error("Failed to update service", err);
+      toast.error("Failed to update service");
     } finally {
       setSubmitting(false);
     }
@@ -173,7 +183,7 @@ export default function ServicesPage() {
 
   const handleToggleActive = async (service: Service) => {
     try {
-      await fetch("/api/admin/services", {
+      const res = await fetch("/api/admin/services", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -181,15 +191,22 @@ export default function ServicesPage() {
           action: "toggleActive",
         }),
       });
-      fetchServices();
+      if (res.ok) {
+        toast.success(service.isActive ? "Service deactivated" : "Service activated");
+        fetchServices();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update service");
+      }
     } catch (err) {
       console.error("Failed to toggle service", err);
+      toast.error("Failed to update service");
     }
   };
 
   const handleToggleFeatured = async (service: Service) => {
     try {
-      await fetch("/api/admin/services", {
+      const res = await fetch("/api/admin/services", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -197,9 +214,16 @@ export default function ServicesPage() {
           action: "toggleFeatured",
         }),
       });
-      fetchServices();
+      if (res.ok) {
+        toast.success(service.isFeatured ? "Removed from featured" : "Marked as featured");
+        fetchServices();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update service");
+      }
     } catch (err) {
       console.error("Failed to toggle featured", err);
+      toast.error("Failed to update service");
     }
   };
 

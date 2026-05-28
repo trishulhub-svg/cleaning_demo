@@ -1,8 +1,11 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function GET() {
   try {
+    await requireAuth(["admin"]);
+
     const services = await db.service.findMany({
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
@@ -23,6 +26,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth(["admin"]);
+
     const body = await req.json();
     const {
       name,
@@ -77,6 +82,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    await requireAuth(["admin"]);
+
     const body = await req.json();
     const { serviceId, action, ...data } = body;
 
