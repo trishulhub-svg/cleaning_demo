@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireAuth } from "@/lib/auth-helpers";
 
 // ============ POST: Update Payment Method to Cash ============
 
 export async function POST(request: NextRequest) {
   try {
+    // ── Auth check: customer (own bookings) or admin (any booking) ──
+    let authUser;
+    try {
+      authUser = await requireAuth(["customer", "admin", "staff"]);
+    } catch {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { bookingId } = body;
 
@@ -20,7 +29,7 @@ export async function POST(request: NextRequest) {
       where: { id: Number(bookingId) },
       include: {
         service: { select: { name: true } },
-        user: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true, id: true } },
       },
     });
 
@@ -28,6 +37,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Booking not found" },
         { status: 404 }
+      );
+    }
+
+    // Ownership check: customers can only modify their own bookings
+    if (authUser.userType === "customer" && booking.userId !== authUser.id) {
+      return NextResponse.json(
+        { error: "You do not have permission to modify this booking" },
+        { status: 403 }
       );
     }
 

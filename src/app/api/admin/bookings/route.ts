@@ -159,6 +159,13 @@ export async function PATCH(req: NextRequest) {
 
     if (action === "updateStatus") {
       const { status } = data;
+      const validStatuses = ["pending", "confirmed", "in_progress", "completed", "cash_pending", "cancelled"];
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json(
+          { error: `Invalid booking status: "${status}". Must be one of: ${validStatuses.join(", ")}` },
+          { status: 400 }
+        );
+      }
       const booking = await db.booking.update({
         where: { id: bookingId },
         data: {
@@ -174,6 +181,13 @@ export async function PATCH(req: NextRequest) {
 
     if (action === "updatePaymentStatus") {
       const { paymentStatus } = data;
+      const validPaymentStatuses = ["paid", "pending", "cash_on_service"];
+      if (!validPaymentStatuses.includes(paymentStatus)) {
+        return NextResponse.json(
+          { error: `Invalid payment status: "${paymentStatus}". Must be one of: ${validPaymentStatuses.join(", ")}` },
+          { status: 400 }
+        );
+      }
       const booking = await db.booking.update({
         where: { id: bookingId },
         data: { paymentStatus, updatedAt: new Date() },

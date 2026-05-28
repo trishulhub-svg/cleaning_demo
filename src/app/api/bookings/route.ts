@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     const finalPrice = isOnlinePayment
       ? basePrice - basePrice * (discountPercent / 100)
       : basePrice;
-    const effectivePrice = totalPrice ?? finalPrice;
+    const effectivePrice = finalPrice; // Always use server-calculated price to prevent tampering
 
     // ============ Determine User ID ============
 

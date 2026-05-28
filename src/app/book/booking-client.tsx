@@ -103,6 +103,27 @@ const TIME_SLOTS = [
   "17:00",
 ];
 
+function isToday(date: Date | undefined): boolean {
+  if (!date) return false;
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
+
+function isTimeSlotPast(timeSlot: string): boolean {
+  const now = new Date();
+  const [h, m] = timeSlot.split(":").map(Number);
+  return (
+    now.getFullYear() === new Date().getFullYear() &&
+    now.getMonth() === new Date().getMonth() &&
+    now.getDate() === new Date().getDate() &&
+    (h < now.getHours() || (h === now.getHours() && m <= now.getMinutes()))
+  );
+}
+
 // ─── Booking Form Component ──────────────────────────────────────────────
 
 export function BookingClient({
@@ -497,20 +518,26 @@ export function BookingClient({
               <div className="space-y-2">
                 <Label>Select Time</Label>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {TIME_SLOTS.map((time) => (
+                  {TIME_SLOTS.map((time) => {
+                    const disabled = isToday(selectedDate) && isTimeSlotPast(time);
+                    return (
                     <button
                       key={time}
                       type="button"
+                      disabled={disabled}
                       onClick={() => setSelectedTime(time)}
                       className={`px-3 py-2.5 text-sm font-medium rounded-lg border transition-all ${
-                        selectedTime === time
-                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                          : "bg-background text-foreground border-input hover:border-primary/30 hover:bg-primary/5"
+                        disabled
+                          ? "bg-muted text-muted-foreground border-muted cursor-not-allowed opacity-50"
+                          : selectedTime === time
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-background text-foreground border-input hover:border-primary/30 hover:bg-primary/5"
                       }`}
                     >
                       {formatTimeSlot(time)}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </CardContent>

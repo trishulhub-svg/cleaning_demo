@@ -172,6 +172,10 @@ function StatusBadge({ status }: { status: string }) {
       label: 'Confirmed',
       className: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
     },
+    in_progress: {
+      label: 'In Progress',
+      className: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800',
+    },
     completed: {
       label: 'Completed',
       className: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800',

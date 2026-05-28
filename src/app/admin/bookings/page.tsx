@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import {
   Search,
   Filter,
@@ -83,7 +83,7 @@ interface StaffMember {
   role: string;
 }
 
-const BOOKING_STATUSES = ["all", "pending", "confirmed", "completed", "cancelled"];
+const BOOKING_STATUSES = ["all", "pending", "confirmed", "in_progress", "completed", "cash_pending", "cancelled"];
 const PAYMENT_STATUSES = ["paid", "pending", "cash_on_service"];
 
 function getStatusBadge(status: string) {
@@ -243,7 +243,7 @@ function BookingsPageInner() {
   const [total, setTotal] = useState(0);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState("pending");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -270,6 +270,10 @@ function BookingsPageInner() {
     qrCode: string;
   } | null>(null);
 
+  // Use a ref to avoid double-fetching when filters reset page to 1
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
   // Unassign confirm dialog
   const [unassignDialog, setUnassignDialog] = useState<{
     open: boolean;
@@ -279,15 +283,16 @@ function BookingsPageInner() {
   const [unassigning, setUnassigning] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (overridePage?: number) => {
     setLoading(true);
     try {
+      const currentPage = overridePage ?? pageRef.current;
       const params = new URLSearchParams({
         status: statusFilter,
         date: dateFilter,
         assignment: assignmentFilter,
         search: searchQuery,
-        page: page.toString(),
+        page: currentPage.toString(),
         limit: "20",
       });
       const res = await fetch(`/api/admin/bookings?${params}`);
@@ -314,7 +319,7 @@ function BookingsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, dateFilter, assignmentFilter, searchQuery, page]);
+  }, [statusFilter, dateFilter, assignmentFilter, searchQuery]);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -346,14 +351,18 @@ function BookingsPageInner() {
     fetchStaff();
   }, [fetchStaff]);
 
-  // Reset page when filters change
+  // Reset to page 1 when filters change (fetch directly to avoid double-call)
   useEffect(() => {
-    setPage(1);
+    if (page !== 1) {
+      setPage(1);
+    } else {
+      fetchBookings(1);
+    }
   }, [statusFilter, dateFilter, assignmentFilter, searchQuery]);
 
   const handleStatusChange = async (bookingId: number, newStatus: string) => {
     try {
-      await fetch("/api/admin/bookings", {
+      const res = await fetch("/api/admin/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -362,6 +371,11 @@ function BookingsPageInner() {
           status: newStatus,
         }),
       });
+      if (res.ok) {
+        toast.success(`Booking #${bookingId} status updated to ${newStatus.replace(/_/g, " ")}`);
+      } else {
+        toast.error("Failed to update booking status.");
+      }
       fetchBookings();
     } catch (err) {
       showApiError({
@@ -377,7 +391,7 @@ function BookingsPageInner() {
     newStatus: string
   ) => {
     try {
-      await fetch("/api/admin/bookings", {
+      const res = await fetch("/api/admin/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -386,6 +400,11 @@ function BookingsPageInner() {
           paymentStatus: newStatus,
         }),
       });
+      if (res.ok) {
+        toast.success(`Booking #${bookingId} payment status updated.`);
+      } else {
+        toast.error("Failed to update payment status.");
+      }
       fetchBookings();
     } catch (err) {
       showApiError({
@@ -458,7 +477,7 @@ function BookingsPageInner() {
       toast.success(
         isReassign
           ? "Staff reassigned successfully!"
-          : "Staff assigned with QR code generated!"
+          : "Staff assigned successfully!"
       );
 
       // Refresh bookings list
@@ -815,7 +834,7 @@ function BookingsPageInner() {
                                     bookingId: booking.id,
                                     isReassign: true,
                                     assignmentId: booking.assignment?.id,
-                                    currentStaff: booking.assignedStaff.name,
+                                    currentStaff: booking.assignedStaff?.name ?? "Unknown",
                                   })
                                 }
                                 className="h-7 text-xs"
