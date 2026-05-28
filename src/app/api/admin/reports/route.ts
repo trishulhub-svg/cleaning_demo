@@ -1,7 +1,14 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function GET(req: NextRequest) {
+  try {
+    await requireAuth(["admin"]);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = req.nextUrl;
     const dateFrom = searchParams.get("from") || "";
@@ -86,10 +93,12 @@ export async function GET(req: NextRequest) {
 
     // Get service names for top services
     const serviceIds = topServices.map((s) => s.serviceId);
-    const serviceNames = await db.service.findMany({
-      where: { id: { in: serviceIds } },
-      select: { id: true, name: true },
-    });
+    const serviceNames = serviceIds.length > 0
+      ? await db.service.findMany({
+          where: { id: { in: serviceIds } },
+          select: { id: true, name: true },
+        })
+      : [];
 
     const serviceNameMap = serviceNames.reduce(
       (acc, s) => ({ ...acc, [s.id]: s.name }),
@@ -157,9 +166,18 @@ export async function GET(req: NextRequest) {
       dailyRevenue,
     });
   } catch (error) {
-    console.error("Error fetching reports:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error("[Reports API] GET error:", message, stack);
+
     return NextResponse.json(
-      { error: "Failed to fetch reports" },
+      {
+        error: "Failed to fetch reports",
+        debug: {
+          message,
+          stack: stack?.split("\n").slice(0, 5).join("\n"),
+        },
+      },
       { status: 500 }
     );
   }

@@ -1,7 +1,14 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function GET(req: NextRequest) {
+  try {
+    await requireAuth(["admin"]);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = req.nextUrl;
     const status = searchParams.get("status") || "all";
@@ -32,20 +39,25 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      // Check if search term is numeric (for booking ID lookup)
       const isNumeric = !isNaN(Number(search));
 
-      where.OR = [
+      const orConditions: Record<string, unknown>[] = [
         { user: { name: { contains: search } } },
         { user: { email: { contains: search } } },
         { guestName: { contains: search } },
         { guestEmail: { contains: search } },
         ...(isNumeric ? [{ id: { equals: Number(search) } }] : []),
-        // Search by invoice number via invoice relation
-        { invoice: { invoiceNumber: { contains: search } } },
       ];
+
+      // Only add invoice search if it looks like an invoice number (has GL- prefix or is alphanumeric)
+      if (/[A-Za-z]/.test(search)) {
+        orConditions.push({ invoice: { invoiceNumber: { contains: search } } });
+      }
+
+      where.OR = orConditions;
     }
 
+    // Fetch bookings, total count, and status counts in parallel
     const [bookings, total, statusCounts] = await Promise.all([
       db.booking.findMany({
         where,
@@ -56,7 +68,17 @@ export async function GET(req: NextRequest) {
           service: { select: { name: true } },
           user: { select: { name: true, email: true, phone: true } },
           assignedStaff: { select: { id: true, name: true, phone: true } },
-          assignment: true,
+          assignment: {
+            select: {
+              id: true,
+              status: true,
+              qrCode: true,
+              notes: true,
+              assignedAt: true,
+              startedAt: true,
+              completedAt: true,
+            },
+          },
           invoice: { select: { invoiceNumber: true } },
         },
       }),
@@ -85,15 +107,31 @@ export async function GET(req: NextRequest) {
       statusCounts: counts,
     });
   } catch (error) {
-    console.error("Error fetching bookings:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error("[Bookings API] GET error:", message, stack);
+
+    // Return detailed error info for debugging
     return NextResponse.json(
-      { error: "Failed to fetch bookings" },
+      {
+        error: "Failed to fetch bookings",
+        debug: {
+          message,
+          stack: stack?.split("\n").slice(0, 5).join("\n"),
+        },
+      },
       { status: 500 }
     );
   }
 }
 
 export async function PATCH(req: NextRequest) {
+  try {
+    await requireAuth(["admin"]);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { bookingId, action, ...data } = body;
@@ -192,9 +230,10 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Error updating booking:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Bookings API] PATCH error:", message);
     return NextResponse.json(
-      { error: "Failed to update booking" },
+      { error: "Failed to update booking", debug: { message } },
       { status: 500 }
     );
   }
