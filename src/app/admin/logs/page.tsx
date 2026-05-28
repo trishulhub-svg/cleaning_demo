@@ -188,8 +188,8 @@ export default function LogsPage() {
   const handleExportPdf = async () => {
     setExporting(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const jsPDF = require("jspdf");
+      // jspdf v4+ is ESM-only — must use dynamic import
+      const { default: jsPDF } = await import("jspdf");
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();

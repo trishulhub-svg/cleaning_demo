@@ -8,12 +8,13 @@ import { CURRENCY } from "@/lib/constants";
 /**
  * Create a styled jsPDF instance with standard fonts and page setup.
  */
-export function createPdf(
+export async function createPdf(
   title: string,
   subtitle?: string
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const jsPDF = require("jspdf");
+  // jspdf v4+ is ESM-only — must use dynamic import
+  const { default: jsPDF } = await import("jspdf");
+  await import("jspdf-autotable");
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

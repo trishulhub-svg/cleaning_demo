@@ -474,10 +474,9 @@ function BookingsPageInner() {
   const handleExportPdf = async () => {
     setExporting(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const jsPDF = require("jspdf");
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("jspdf-autotable");
+      // jspdf v4+ is ESM-only — must use dynamic import
+      const { default: jsPDF } = await import("jspdf");
+      await import("jspdf-autotable");
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
