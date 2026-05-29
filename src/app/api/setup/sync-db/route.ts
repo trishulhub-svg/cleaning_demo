@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireAuth } from "@/lib/auth-helpers";
 
 // One-time endpoint to sync missing DB tables/columns to Turso.
 // Run once, then delete this file.
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    // ── Auth check: admin only ──
+    await requireAuth(['admin']);
+
     const results: string[] = [];
 
     // ── 1. ActivityLog table ──
@@ -237,6 +241,9 @@ export async function GET() {
       results,
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes("redirect")) {
+      throw error; // Let auth redirects pass through
+    }
     console.error("[Setup] DB sync error:", error);
     return NextResponse.json(
       {

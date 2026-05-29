@@ -1,16 +1,29 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { hashPassword, verifyPassword } from '@/lib/auth-helpers'
+import { hashPassword, verifyPassword, requireAuth } from '@/lib/auth-helpers'
 import { logAuthActivity } from '@/lib/activity-logger'
 
 export async function updateStaffProfile(_prevState: { success: boolean; error: string; message: string } | null, formData: FormData) {
+  // IDOR protection: verify the authenticated staff member
+  let authUser
+  try {
+    authUser = await requireAuth(['staff'])
+  } catch {
+    return { success: false, error: 'Authentication required.', message: '' }
+  }
+
   const staffId = formData.get('staffId') as string
   const name = formData.get('name') as string
   const phone = formData.get('phone') as string
 
   if (!staffId || !name || !phone) {
     return { success: false, error: 'All fields are required.', message: '' }
+  }
+
+  // IDOR check: the submitted staffId must match the authenticated user
+  if (parseInt(staffId, 10) !== authUser.id) {
+    return { success: false, error: 'You can only update your own profile.', message: '' }
   }
 
   try {
@@ -27,6 +40,14 @@ export async function updateStaffProfile(_prevState: { success: boolean; error: 
 }
 
 export async function changeStaffPassword(_prevState: { success: boolean; error: string; message: string } | null, formData: FormData) {
+  // IDOR protection: verify the authenticated staff member
+  let authUser
+  try {
+    authUser = await requireAuth(['staff'])
+  } catch {
+    return { success: false, error: 'Authentication required.', message: '' }
+  }
+
   const staffId = formData.get('staffId') as string
   const currentPassword = formData.get('currentPassword') as string
   const newPassword = formData.get('newPassword') as string
@@ -40,6 +61,11 @@ export async function changeStaffPassword(_prevState: { success: boolean; error:
   }
   if (newPassword !== confirmPassword) {
     return { success: false, error: 'New passwords do not match.', message: '' }
+  }
+
+  // IDOR check: the submitted staffId must match the authenticated user
+  if (parseInt(staffId, 10) !== authUser.id) {
+    return { success: false, error: 'You can only change your own password.', message: '' }
   }
 
   try {

@@ -160,7 +160,7 @@ export default function StaffPage() {
       return;
     setSubmitting(true);
     try {
-      await fetch("/api/admin/staff", {
+      const res = await fetch("/api/admin/staff", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -169,11 +169,17 @@ export default function StaffPage() {
           ...formData,
         }),
       });
-      setEditModal(null);
-      setFormData({ name: "", email: "", phone: "", role: "cleaner" });
-      fetchStaff();
+      if (res.ok) {
+        setEditModal(null);
+        setFormData({ name: "", email: "", phone: "", role: "cleaner" });
+        fetchStaff();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Failed to update staff member.");
+      }
     } catch (err) {
       console.error("Failed to update staff", err);
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -181,7 +187,7 @@ export default function StaffPage() {
 
   const handleToggleActive = async (member: StaffMember) => {
     try {
-      await fetch("/api/admin/staff", {
+      const res = await fetch("/api/admin/staff", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -189,9 +195,15 @@ export default function StaffPage() {
           action: "toggleActive",
         }),
       });
-      fetchStaff();
+      if (res.ok) {
+        fetchStaff();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || `Failed to ${member.isActive ? "deactivate" : "activate"} staff member.`);
+      }
     } catch (err) {
       console.error("Failed to toggle staff active status", err);
+      toast.error("An unexpected error occurred.");
     }
   };
 
@@ -251,7 +263,8 @@ export default function StaffPage() {
         setAdminCurrentPassword("");
         fetchStaff();
       } else {
-        showApiError({ res, fallback: "Failed to update manager." });
+        const data = await res.json().catch(() => null);
+        showApiError({ error: data || "Failed to update manager.", context: "Updating manager" });
       }
     } catch (err) {
       console.error("Failed to update admin", err);
@@ -283,7 +296,8 @@ export default function StaffPage() {
           name: adminName,
         });
       } else {
-        showApiError({ res, fallback: "Failed to reset password." });
+        const data = await res.json().catch(() => null);
+        showApiError({ error: data || "Failed to reset password.", context: "Resetting admin password" });
       }
     } catch (err) {
       console.error("Failed to reset admin password", err);

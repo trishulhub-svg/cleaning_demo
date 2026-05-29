@@ -121,19 +121,10 @@ export async function GET(req: NextRequest) {
       statusCounts: counts,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    const stack = error instanceof Error ? error.stack : undefined;
-    console.error("[Bookings API] GET error:", message, stack);
+    console.error("[Bookings API] GET error:", error);
 
-    // Return detailed error info for debugging
     return NextResponse.json(
-      {
-        error: "Failed to fetch bookings",
-        debug: {
-          message,
-          stack: stack?.split("\n").slice(0, 5).join("\n"),
-        },
-      },
+      { error: "Failed to fetch bookings" },
       { status: 500 }
     );
   }
@@ -258,10 +249,9 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[Bookings API] PATCH error:", message);
+    console.error("[Bookings API] PATCH error:", error);
     return NextResponse.json(
-      { error: "Failed to update booking", debug: { message } },
+      { error: "Failed to update booking" },
       { status: 500 }
     );
   }

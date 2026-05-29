@@ -1,8 +1,12 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function GET() {
   try {
+    // ── Auth check: admin only ──
+    await requireAuth(['admin']);
+
     const today = new Date().toISOString().split("T")[0];
     const now = new Date();
     const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -119,6 +123,9 @@ export async function GET() {
       ),
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes("redirect")) {
+      throw error; // Let auth redirects pass through
+    }
     console.error("Error fetching dashboard stats:", error);
     return NextResponse.json(
       { error: "Failed to fetch dashboard data" },

@@ -74,7 +74,7 @@ export function StaffMobileNav({ staffName, staffRole, initials }: StaffMobileNa
               Activity Logs
             </Link>
             <Link
-              href="/change-password"
+              href="/staff/change-password"
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
             >

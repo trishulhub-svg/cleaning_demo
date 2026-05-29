@@ -22,12 +22,12 @@ async function getStripe() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { bookingId, amount } = body;
+    const { bookingId } = body;
 
     // Validate required fields
-    if (!bookingId || !amount) {
+    if (!bookingId) {
       return NextResponse.json(
-        { error: "Missing bookingId or amount" },
+        { error: "Missing bookingId" },
         { status: 400 }
       );
     }
@@ -79,7 +79,8 @@ export async function POST(request: NextRequest) {
               name: booking.service.name,
               description: `Cleaning Service — Booking GL-${String(booking.id).padStart(5, "0")}`,
             },
-            unit_amount: Number(amount),
+            // SECURITY: Always use server-side price from booking, never trust client value
+            unit_amount: Math.round(booking.totalPrice * 100),
           },
           quantity: 1,
         },

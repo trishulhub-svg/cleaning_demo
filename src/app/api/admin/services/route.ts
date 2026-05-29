@@ -52,11 +52,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return NextResponse.json(
+        { error: "Price must be a valid non-negative number" },
+        { status: 400 }
+      );
+    }
+
     const service = await db.service.create({
       data: {
         name,
         description,
-        price: parseFloat(price) || 0,
+        price: parsedPrice,
         packageType: packageType || "standard",
         bedroomsMin: parseInt(bedroomsMin) || 1,
         bedroomsMax: parseInt(bedroomsMax) || 2,
@@ -95,11 +103,22 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (action === "update") {
+      let parsedPrice: number | undefined;
+      if (data.price !== undefined && data.price !== null && data.price !== "") {
+        parsedPrice = parseFloat(data.price);
+        if (isNaN(parsedPrice) || parsedPrice < 0) {
+          return NextResponse.json(
+            { error: "Price must be a valid non-negative number" },
+            { status: 400 }
+          );
+        }
+      }
+
       const service = await db.service.update({
         where: { id: serviceId },
         data: {
           ...data,
-          price: data.price ? parseFloat(data.price) : undefined,
+          price: parsedPrice,
           bedroomsMin: data.bedroomsMin ? parseInt(data.bedroomsMin) : undefined,
           bedroomsMax: data.bedroomsMax ? parseInt(data.bedroomsMax) : undefined,
           bathroomsMin: data.bathroomsMin

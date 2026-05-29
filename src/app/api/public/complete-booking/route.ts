@@ -55,14 +55,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Verify ownership (same logic as qr-scan) ──
+    // ── Verify authentication first (no guest access) ──
     const session = await getAuthSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    // ── Verify ownership (same logic as qr-scan) ──
     const isOwner =
-      (session?.user?.userType === "customer" && session.user.id === booking.userId) ||
-      (session?.user?.email &&
+      (session.user.userType === "customer" && session.user.id === booking.userId) ||
+      (session.user.email &&
         session.user.email.toLowerCase() === booking.guestEmail?.toLowerCase());
 
-    if (session?.user && !isOwner) {
+    if (!isOwner) {
       return NextResponse.json(
         { success: false, error: "You do not have permission to modify this booking." },
         { status: 403 }

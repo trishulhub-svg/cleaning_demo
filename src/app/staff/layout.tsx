@@ -72,7 +72,7 @@ export default async function StaffLayout({
                 Activity Logs
               </Link>
               <Link
-                href="/change-password"
+                href="/staff/change-password"
                 className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-green-700 bg-gray-100 hover:bg-green-50 px-3 py-2 rounded-lg transition-colors"
               >
                 <KeyRound className="h-4 w-4" />

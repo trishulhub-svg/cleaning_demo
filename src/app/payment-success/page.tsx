@@ -3,7 +3,7 @@ import { CURRENCY, APP_NAME } from "@/lib/constants";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
-import { refreshSessionCookie } from "@/lib/auth-helpers";
+import { refreshSessionCookie, getAuthSession } from "@/lib/auth-helpers";
 import { generateInvoiceNumber } from "@/lib/invoice";
 import { getSetting } from "@/lib/settings";
 import {
@@ -311,6 +311,28 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
     if (booking?.paymentStatus === "paid") {
       isVerified = true;
     }
+  }
+
+  // ── IDOR protection: verify the viewer owns this booking ──
+  // (Only applies when arriving via fallback bookingId without Stripe session verification)
+  if (!isVerified && booking) {
+    const session = await getAuthSession();
+
+    if (booking.userId) {
+      // Booking belongs to a registered user — viewer MUST be that user or an admin/staff
+      if (!session?.user) {
+        // Not logged in but booking belongs to someone — redirect to login
+        redirect("/login");
+      }
+      if (
+        session.user.userType === "customer" &&
+        booking.userId !== session.user.id
+      ) {
+        // Logged-in customer but not the owner
+        redirect("/dashboard");
+      }
+    }
+    // If booking.userId is null (guest booking), allow viewing
   }
 
   // If still no booking, redirect

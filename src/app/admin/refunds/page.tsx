@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CURRENCY } from "@/lib/constants";
+import { toast } from "sonner";
 
 interface Refund {
   id: number;
@@ -109,7 +110,7 @@ export default function RefundsPage() {
     setActionLoading(true);
     try {
       const { refundId, action } = actionModal;
-      await fetch("/api/admin/refunds", {
+      const res = await fetch("/api/admin/refunds", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -118,11 +119,17 @@ export default function RefundsPage() {
           adminNotes,
         }),
       });
-      setActionModal({ open: false, refundId: 0, action: "approve", refundAmount: 0, customerName: "" });
-      setAdminNotes("");
-      fetchRefunds();
+      if (res.ok) {
+        setActionModal({ open: false, refundId: 0, action: "approve", refundAmount: 0, customerName: "" });
+        setAdminNotes("");
+        fetchRefunds();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || `Failed to ${action} refund. Please try again.`);
+      }
     } catch (err) {
       console.error("Failed to process refund action", err);
+      toast.error("An unexpected error occurred.");
     } finally {
       setActionLoading(false);
     }

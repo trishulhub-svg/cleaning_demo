@@ -1,8 +1,12 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function GET(req: NextRequest) {
   try {
+    // ── Auth check: admin only ──
+    await requireAuth(['admin']);
+
     const { searchParams } = req.nextUrl;
     const search = searchParams.get("search") || "";
     const page = parseInt(searchParams.get("page") || "1");
@@ -47,6 +51,9 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes("redirect")) {
+      throw error; // Let auth redirects pass through
+    }
     console.error("Error fetching customers:", error);
     return NextResponse.json(
       { error: "Failed to fetch customers" },

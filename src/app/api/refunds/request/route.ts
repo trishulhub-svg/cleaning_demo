@@ -1,9 +1,13 @@
 import { db } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
+import { requireAuth } from "@/lib/auth-helpers"
 import { logActivity } from "@/lib/activity-logger"
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Auth check: customer only ──
+    const user = await requireAuth(['customer'])
+
     // Parse body
     const body = await req.json()
     const { bookingId, invoiceId, amount, reason } = body
@@ -46,6 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Booking not found." },
         { status: 404 }
+      )
+    }
+
+    // ── Ownership check: only the booking owner can request a refund ──
+    if (booking.userId !== user.id) {
+      return NextResponse.json(
+        { error: "You do not have permission to request a refund for this booking." },
+        { status: 403 }
       )
     }
 
@@ -152,6 +164,9 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    if (error instanceof Error && error.message.includes("redirect")) {
+      throw error // Let auth redirects pass through
+    }
     console.error("[RefundRequest] Error:", error)
     return NextResponse.json(
       { error: "An unexpected error occurred. Please try again." },

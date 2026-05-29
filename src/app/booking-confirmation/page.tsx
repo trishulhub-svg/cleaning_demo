@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { PayCashButton } from './pay-cash-button'
 
 // ============ Types ============
 
@@ -85,12 +86,22 @@ export default async function BookingConfirmationPage({ searchParams }: Props) {
   }
 
   // If the booking has a userId, verify ownership (for logged-in bookings)
-  if (booking.userId && isLoggedIn && session?.user && booking.userId !== session.user.id) {
-    redirect('/')
+  // IDOR fix: If the booking belongs to a registered user, the viewer MUST be
+  // logged in AND must be the owner (or admin/staff).
+  if (booking.userId) {
+    if (!isLoggedIn || !session?.user) {
+      // Booking belongs to a registered user but viewer is not logged in — redirect to login
+      redirect(`/login?callbackUrl=/booking-confirmation%3FbookingId%3D${bookingId}`)
+    }
+    if (
+      session.user.userType === 'customer' &&
+      booking.userId !== session.user.id
+    ) {
+      // Logged-in customer trying to view someone else's booking
+      redirect('/')
+    }
   }
-
-  // If the booking belongs to a user and the visitor is not logged in, allow access
-  // (they might be returning from the email link)
+  // If booking.userId is null (guest booking), allow viewing without auth
 
   const typedBooking = booking as unknown as BookingWithService
   const bookingDate = format(new Date(`${booking.bookingDate}T${booking.bookingTime}`), 'EEEE, d MMMM yyyy')
@@ -292,25 +303,7 @@ export default async function BookingConfirmationPage({ searchParams }: Props) {
                           </Link>
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={`/api/bookings/pay-after-service`} onClick={(e) => {
-                          e.preventDefault();
-                          fetch('/api/bookings/pay-after-service', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ bookingId: booking.id }),
-                          }).then(res => res.json()).then(data => {
-                            if (data.success) {
-                              window.location.reload();
-                            } else {
-                              alert(data.error || 'Something went wrong');
-                            }
-                          });
-                        }}>
-                          <CreditCard className="h-4 w-4 mr-1" />
-                          Pay Cash on Service
-                        </Link>
-                      </Button>
+                      <PayCashButton bookingId={booking.id} />
                     </div>
                   </div>
                 </div>

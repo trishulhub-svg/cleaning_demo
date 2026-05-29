@@ -136,101 +136,105 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   const paymentIntentId = session.payment_intent as string;
   const invoiceNumber = `INV-${Date.now()}-${String(booking.id).padStart(5, "0")}`;
 
-  // Create invoice if not exists
-  let invoiceId = booking.invoiceId;
-  if (!invoiceId) {
-    const invoice = await db.invoice.create({
+  // ── Wrap all DB writes in a transaction to ensure consistency ──
+  // If the webhook fires twice or one operation fails mid-way, data stays consistent.
+  const { invoiceId: finalInvoiceId, isPostServicePayment } = await db.$transaction(async (tx) => {
+    // Create invoice if not exists
+    let txnInvoiceId = booking.invoiceId;
+    if (!txnInvoiceId) {
+      const invoice = await tx.invoice.create({
+        data: {
+          userId: booking.userId ?? 0,
+          bookingId: booking.id,
+          invoiceNumber,
+          totalAmount: amount,
+          paymentMethod: "stripe",
+          paymentStatus: "paid",
+        },
+      });
+      txnInvoiceId = invoice.id;
+
+      // Link invoice to booking
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { invoiceId: invoice.id },
+      });
+    } else {
+      // Update existing invoice
+      await tx.invoice.update({
+        where: { id: txnInvoiceId },
+        data: {
+          paymentStatus: "paid",
+          totalAmount: amount,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    // Create payment record
+    await tx.payment.create({
       data: {
         userId: booking.userId ?? 0,
         bookingId: booking.id,
-        invoiceNumber,
-        totalAmount: amount,
+        invoiceId: txnInvoiceId!,
+        amount,
         paymentMethod: "stripe",
-        paymentStatus: "paid",
+        transactionId: session.id,
+        paymentStatus: "completed",
+        paidAt: new Date(),
       },
     });
-    invoiceId = invoice.id;
 
-    // Link invoice to booking
-    await db.booking.update({
+    // ── Check if service has already started BEFORE updating booking ──
+    const activeAssignment = await tx.bookingAssignment.findFirst({
+      where: {
+        bookingId: booking.id,
+        status: { in: ["in_progress", "cash_pending"] },
+      },
+    });
+
+    const txnIsPostServicePayment = !!activeAssignment;
+    const newBookingStatus = txnIsPostServicePayment ? "completed" : "confirmed";
+    const now = new Date();
+
+    // Update booking status
+    await tx.booking.update({
       where: { id: booking.id },
-      data: { invoiceId: invoice.id },
-    });
-  } else {
-    // Update existing invoice
-    await db.invoice.update({
-      where: { id: invoiceId },
       data: {
         paymentStatus: "paid",
-        totalAmount: amount,
-        updatedAt: new Date(),
+        bookingStatus: newBookingStatus,
+        paymentMethod: "stripe",
+        ...(txnIsPostServicePayment ? {
+          completedAt: now,
+          completedBy: "Customer (Online)",
+          qrScannedAt: now,
+        } : {}),
+        updatedAt: now,
       },
     });
-  }
 
-  // Create payment record
-  await db.payment.create({
-    data: {
-      userId: booking.userId ?? 0,
-      bookingId: booking.id,
-      invoiceId: invoiceId!,
-      amount,
-      paymentMethod: "stripe",
-      transactionId: session.id,
-      paymentStatus: "completed",
-      paidAt: new Date(),
-    },
-  });
-
-  // ── Check if service has already started BEFORE updating booking ──
-  // This happens when a customer pays via Stripe AFTER scanning QR (pay-after-service → chose online).
-  // In that case, the service is already done and we should COMPLETE the booking, not just confirm it.
-  const activeAssignment = await db.bookingAssignment.findFirst({
-    where: {
-      bookingId: booking.id,
-      status: { in: ["in_progress", "cash_pending"] },
-    },
-  });
-
-  const isPostServicePayment = !!activeAssignment;
-  const newBookingStatus = isPostServicePayment ? "completed" : "confirmed";
-  const now = new Date();
-
-  // Update booking status
-  await db.booking.update({
-    where: { id: booking.id },
-    data: {
-      paymentStatus: "paid",
-      bookingStatus: newBookingStatus,
-      paymentMethod: "stripe",
-      ...(isPostServicePayment ? {
-        completedAt: now,
-        completedBy: "Customer (Online)",
-        qrScannedAt: now,
-      } : {}),
-      updatedAt: now,
-    },
-  });
-
-  // Update assignment status only if still in "assigned" state (don't reset in_progress!)
-  await db.bookingAssignment.updateMany({
-    where: {
-      bookingId: booking.id,
-      status: "assigned",
-    },
-    data: { status: "assigned" },
-  });
-
-  // If this is a post-service payment, also complete the assignment
-  if (isPostServicePayment) {
-    await db.bookingAssignment.update({
-      where: { id: activeAssignment.id },
-      data: {
-        status: "completed",
-        completedAt: now,
+    // Update assignment status only if still in "assigned" state (don't reset in_progress!)
+    await tx.bookingAssignment.updateMany({
+      where: {
+        bookingId: booking.id,
+        status: "assigned",
       },
+      data: { status: "assigned" },
     });
-  }
+
+    // If this is a post-service payment, also complete the assignment
+    if (txnIsPostServicePayment) {
+      await tx.bookingAssignment.update({
+        where: { id: activeAssignment.id },
+        data: {
+          status: "completed",
+          completedAt: now,
+        },
+      });
+    }
+
+    return { invoiceId: txnInvoiceId, isPostServicePayment: txnIsPostServicePayment };
+  });
 
   logPaymentActivity('payment_completed_stripe', null, booking.id, `Booking #${booking.id}`, { amount, sessionId: session.id, isPostServicePayment }).catch(() => {})
 
@@ -253,8 +257,8 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     }
 
     // Send payment receipt for post-service card payment
-    if (customerEmail && invoiceId) {
-      const invoice = await db.invoice.findUnique({ where: { id: invoiceId } });
+    if (customerEmail && finalInvoiceId) {
+      const invoice = await db.invoice.findUnique({ where: { id: finalInvoiceId } });
       sendPaymentReceipt(customerEmail, customerName, {
         invoiceNumber: invoice?.invoiceNumber || `INV-${booking.id}`,
         date: new Date().toLocaleDateString(),
